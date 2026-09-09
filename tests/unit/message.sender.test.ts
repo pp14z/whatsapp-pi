@@ -7,7 +7,8 @@ describe('MessageSender', () => {
         getStatus: vi.fn(),
         getSocket: vi.fn(),
         isVerbose: vi.fn(),
-        prepareGroupSession: vi.fn().mockResolvedValue(undefined)
+        prepareGroupSession: vi.fn().mockResolvedValue(undefined),
+        cacheSentMessage: vi.fn()
     };
 
     beforeEach(() => {
@@ -20,7 +21,8 @@ describe('MessageSender', () => {
     });
 
     it('sends branded text through the active socket', async () => {
-        const sendMessage = vi.fn().mockResolvedValue({ key: { id: 'MSG123' } });
+        const message = { extendedTextMessage: { text: 'hello π' } };
+        const sendMessage = vi.fn().mockResolvedValue({ key: { id: 'MSG123' }, message });
         whatsappService.getSocket.mockReturnValue({ sendMessage });
         const sender = new MessageSender(whatsappService as any);
 
@@ -36,6 +38,7 @@ describe('MessageSender', () => {
         expect(sendMessage).toHaveBeenCalledWith('5511999998888@s.whatsapp.net', {
             text: 'hello π'
         });
+        expect(whatsappService.cacheSentMessage).toHaveBeenCalledWith('MSG123', message);
     });
 
     it('returns failure when no socket is available and retries are exhausted', async () => {

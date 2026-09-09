@@ -12,6 +12,8 @@ const baileysMocks = vi.hoisted(() => {
             handlers,
             user: { id: '5511999998888:0@s.whatsapp.net' },
             sendMessage: vi.fn().mockResolvedValue(undefined),
+            sendPresenceUpdate: vi.fn().mockResolvedValue(undefined),
+            groupMetadata: vi.fn(),
             ev: {
                 on: vi.fn((event: string, handler: (event: any) => Promise<void>) => {
                     handlers.set(event, handler);
@@ -26,12 +28,12 @@ const baileysMocks = vi.hoisted(() => {
 
     return {
         sockets,
-        makeWASocket: vi.fn(() => createSocket()),
+        makeWASocket: vi.fn((_config: any) => createSocket()),
         fetchLatestBaileysVersion: vi.fn().mockResolvedValue({ version: [2, 3000, 0] }),
         makeCacheableSignalKeyStore: vi.fn((_keys: any, _logger: any) => _keys),
         reset() {
             sockets.length = 0;
-            this.makeWASocket.mockReset().mockImplementation(() => createSocket());
+            this.makeWASocket.mockReset().mockImplementation((_config: any) => createSocket());
             this.fetchLatestBaileysVersion.mockReset().mockResolvedValue({ version: [2, 3000, 0] });
             this.makeCacheableSignalKeyStore.mockReset().mockImplementation((_keys: any, _logger: any) => _keys);
         }
@@ -60,6 +62,7 @@ const createSessionManager = () => ({
     deleteAuthState: vi.fn().mockResolvedValue(undefined),
     isAllowed: vi.fn().mockReturnValue(true),
     isConversationAllowed: vi.fn().mockReturnValue(true),
+    getAllowedContact: vi.fn().mockReturnValue(undefined),
     getOperatorJid: vi.fn().mockReturnValue(''),
     setOperatorJid: vi.fn().mockResolvedValue(undefined)
 });
@@ -116,6 +119,71 @@ describe('WhatsAppService QR welcome message', () => {
         expect(socket.sendMessage).not.toHaveBeenCalled();
         const welcomeCalls = logSpy.mock.calls.filter(args => args[0] === 'WhatsApp connected');
         expect(welcomeCalls).toHaveLength(0);
+
+        await service.stop();
+    });
+
+    it('provides sent messages to Baileys retry requests without fetching a WA version', async () => {
+        const { WhatsAppService } = await import('../../src/services/whatsapp.service.ts');
+        const sessionManager = createSessionManager();
+        const service = new WhatsAppService(sessionManager as any);
+        const sentMessage = { extendedTextMessage: { text: 'hello π' } };
+
+        await service.start();
+        const socket = baileysMocks.sockets[0];
+        socket.sendMessage.mockResolvedValue({ key: { id: 'MSG123' }, message: sentMessage });
+        await socket.handlers.get('connection.update')!({ connection: 'open' });
+        await service.sendMessage('5511999998888@s.whatsapp.net', 'hello');
+
+        const config = baileysMocks.makeWASocket.mock.calls[0][0];
+        expect(config.version).toBeUndefined();
+        expect(baileysMocks.fetchLatestBaileysVersion).not.toHaveBeenCalled();
+        await expect(config.getMessage({ id: 'MSG123' })).resolves.toBe(sentMessage);
+        await expect(config.getMessage({ id: 'MSG123', fromMe: false })).resolves.toBeUndefined();
+        await expect(config.getMessage({ id: 'unknown' })).resolves.toBeUndefined();
+
+        await service.stop();
+    });
+
+    it('expires sent messages and bounds the retry cache', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(1_000);
+        const { WhatsAppService } = await import('../../src/services/whatsapp.service.ts');
+        const sessionManager = createSessionManager();
+        const service = new WhatsAppService(sessionManager as any);
+
+        await service.start();
+        const config = baileysMocks.makeWASocket.mock.calls[0][0];
+        for (let index = 0; index <= 500; index++) {
+            service.cacheSentMessage(`MSG${index}`, { conversation: `${index}` });
+        }
+
+        await expect(config.getMessage({ id: 'MSG0' })).resolves.toBeUndefined();
+        await expect(config.getMessage({ id: 'MSG500' })).resolves.toEqual({ conversation: '500' });
+
+        vi.setSystemTime(24 * 60 * 60 * 1000 + 1_001);
+        await expect(config.getMessage({ id: 'MSG500' })).resolves.toBeUndefined();
+
+        await service.stop();
+    });
+
+    it('invalidates cached group metadata when participants change', async () => {
+        const { WhatsAppService } = await import('../../src/services/whatsapp.service.ts');
+        const sessionManager = createSessionManager();
+        const service = new WhatsAppService(sessionManager as any);
+        const groupJid = '120363012345@g.us';
+
+        await service.start();
+        const socket = baileysMocks.sockets[0];
+        socket.groupMetadata.mockResolvedValue({ id: groupJid, subject: 'Group', participants: [] });
+        await socket.handlers.get('connection.update')!({ connection: 'open' });
+        await service.prepareGroupSession(groupJid);
+        await service.prepareGroupSession(groupJid);
+        expect(socket.groupMetadata).toHaveBeenCalledOnce();
+
+        await socket.handlers.get('group-participants.update')!({ id: groupJid });
+        await service.prepareGroupSession(groupJid);
+        expect(socket.groupMetadata).toHaveBeenCalledTimes(2);
 
         await service.stop();
     });

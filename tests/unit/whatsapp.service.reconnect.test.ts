@@ -78,6 +78,24 @@ describe('WhatsAppService reconnect behaviour', () => {
         vi.restoreAllMocks();
     });
 
+    it('reuses an in-flight start instead of creating concurrent sockets', async () => {
+        const { WhatsAppService } = await import('../../src/services/whatsapp.service.ts');
+        const sessionManager = createSessionManager();
+        let resolveAuthState!: (value: any) => void;
+        sessionManager.getAuthState.mockReturnValueOnce(new Promise(resolve => {
+            resolveAuthState = resolve;
+        }));
+        const service = new WhatsAppService(sessionManager as any);
+
+        const firstStart = service.start();
+        const secondStart = service.start();
+        resolveAuthState({ state: { creds: {}, keys: {} }, saveCreds: vi.fn().mockResolvedValue(undefined) });
+        await Promise.all([firstStart, secondStart]);
+
+        expect(baileysMocks.makeWASocket).toHaveBeenCalledOnce();
+        await service.stop();
+    });
+
     it('retries after start() fails during auto-reconnect', async () => {
         vi.useFakeTimers();
         const { WhatsAppService } = await import('../../src/services/whatsapp.service.ts');
@@ -87,15 +105,17 @@ describe('WhatsAppService reconnect behaviour', () => {
         await service.start();
         expect(baileysMocks.makeWASocket).toHaveBeenCalledTimes(1);
 
-        baileysMocks.fetchLatestBaileysVersion.mockRejectedValueOnce(new Error('network error'));
+        baileysMocks.makeWASocket.mockImplementationOnce(() => {
+            throw new Error('socket initialization error');
+        });
 
         await baileysMocks.sockets[0].handlers.get('connection.update')!(unexpectedClose);
 
         await vi.advanceTimersByTimeAsync(5_001);
-        expect(baileysMocks.makeWASocket).toHaveBeenCalledTimes(1);
+        expect(baileysMocks.makeWASocket).toHaveBeenCalledTimes(2);
 
         await vi.advanceTimersByTimeAsync(10_001);
-        expect(baileysMocks.makeWASocket).toHaveBeenCalledTimes(2);
+        expect(baileysMocks.makeWASocket).toHaveBeenCalledTimes(3);
 
         await service.stop();
     });

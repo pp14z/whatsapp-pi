@@ -29,3 +29,4 @@ package-lock.json
 
 # Tesseract OCR (auto-downloaded by LiteParse)
 *.traineddata
+.pi/loops/

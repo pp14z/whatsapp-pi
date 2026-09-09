@@ -1,8 +1,8 @@
 import {
     makeWASocket,
     DisconnectReason,
-    fetchLatestBaileysVersion,
-    makeCacheableSignalKeyStore
+    makeCacheableSignalKeyStore,
+    proto
 } from 'baileys';
 import P from 'pino';
 import { SessionManager } from './session.manager.js';
@@ -84,17 +84,32 @@ interface MessagesUpsertEvent {
     messages?: IncomingMessageLike[];
 }
 
+interface GroupParticipantsUpdateEvent {
+    id: string;
+}
+
+interface SentMessageLike {
+    key?: { id?: string };
+    message?: proto.IMessage | null;
+}
+
+interface CachedSentMessage {
+    message: proto.IMessage;
+    expiresAt: number;
+}
+
 interface WhatsAppSocketLike {
     user?: { id?: string; lid?: string };
     ev: {
         on(event: 'connection.update', handler: (update: ConnectionUpdateEvent) => void | Promise<void>): void;
         on(event: 'creds.update', handler: () => void | Promise<void>): void;
         on(event: 'messages.upsert', handler: (payload: MessagesUpsertEvent) => void | Promise<void>): void;
-        removeAllListeners(event: 'connection.update' | 'creds.update' | 'messages.upsert'): void;
+        on(event: 'group-participants.update', handler: (payload: GroupParticipantsUpdateEvent) => void | Promise<void>): void;
+        removeAllListeners(event: 'connection.update' | 'creds.update' | 'messages.upsert' | 'group-participants.update'): void;
     };
     end(reason?: unknown): void;
     logout(): Promise<void>;
-    sendMessage(jid: string, content: { text: string }): Promise<{ key?: { id?: string } } | undefined>;
+    sendMessage(jid: string, content: { text: string }): Promise<SentMessageLike | undefined>;
     sendPresenceUpdate(presence: 'composing' | 'recording' | 'paused', jid: string): Promise<void>;
     readMessages(messages: Array<{ remoteJid: string; id: string; fromMe: boolean }>): Promise<void>;
     groupMetadata(jid: string): Promise<{ id: string; subject: string; participants: Array<{ id: string }> }>;
@@ -115,6 +130,8 @@ interface BoomLikeError {
 export class WhatsAppService {
     private static readonly INITIAL_RECONNECT_DELAY_MS = 5_000;
     private static readonly MAX_RECONNECT_DELAY_MS = 120_000;
+    private static readonly SENT_MESSAGE_TTL_MS = 24 * 60 * 60 * 1000;
+    private static readonly MAX_CACHED_SENT_MESSAGES = 500;
 
     private socket?: WhatsAppSocketLike;
     private sessionManager: SessionManager;
@@ -125,6 +142,7 @@ export class WhatsAppService {
     private verboseMode = false;
     private onIncomingMessageRecorded?: (message: IncomingMessage) => void | Promise<void>;
     private saveCreds?: () => Promise<void>;
+    private startPromise?: Promise<void>;
     private restoreBaileysConsoleFilter?: () => void;
     private reconnectTimeout?: ReturnType<typeof setTimeout>;
     private intentionalStop = false;
@@ -135,6 +153,7 @@ export class WhatsAppService {
     private qrWasShown = false;
     private boundGroupJid: string | null = null;
     private groupMetadataCache: Map<string, { id: string; subject: string; participants: Array<{ id: string }> }> = new Map();
+    private sentMessageCache = new Map<string, CachedSentMessage>();
 
     constructor(sessionManager: SessionManager) {
         this.sessionManager = sessionManager;
@@ -172,6 +191,39 @@ export class WhatsAppService {
 
     public getSocket(): WhatsAppSocketLike | undefined {
         return this.socket;
+    }
+
+    public cacheSentMessage(id: string | undefined, message: proto.IMessage | null | undefined) {
+        if (!id || !message) return;
+
+        const now = Date.now();
+        this.pruneSentMessageCache(now);
+        this.sentMessageCache.delete(id);
+        this.sentMessageCache.set(id, {
+            message,
+            expiresAt: now + WhatsAppService.SENT_MESSAGE_TTL_MS
+        });
+
+        while (this.sentMessageCache.size > WhatsAppService.MAX_CACHED_SENT_MESSAGES) {
+            const oldestId = this.sentMessageCache.keys().next().value;
+            if (!oldestId) break;
+            this.sentMessageCache.delete(oldestId);
+        }
+    }
+
+    private getCachedSentMessage(id: string | null | undefined): proto.IMessage | undefined {
+        if (!id) return undefined;
+
+        const now = Date.now();
+        this.pruneSentMessageCache(now);
+        return this.sentMessageCache.get(id)?.message;
+    }
+
+    private pruneSentMessageCache(now: number) {
+        for (const [id, cached] of this.sentMessageCache) {
+            if (cached.expiresAt > now) continue;
+            this.sentMessageCache.delete(id);
+        }
     }
 
     public isVerbose(): boolean {
@@ -321,6 +373,7 @@ export class WhatsAppService {
 
     private cleanupSocket() {
         this.clearReconnectTimeout();
+        this.groupMetadataCache.clear();
 
         if (!this.socket) {
             return;
@@ -331,6 +384,7 @@ export class WhatsAppService {
         this.socket.ev.removeAllListeners('connection.update');
         this.socket.ev.removeAllListeners('creds.update');
         this.socket.ev.removeAllListeners('messages.upsert');
+        this.socket.ev.removeAllListeners('group-participants.update');
 
         try {
             this.socket.end(undefined);
@@ -358,19 +412,21 @@ export class WhatsAppService {
         socket.ev.on('messages.upsert', (payload) => {
             void this.handleIncomingMessages(payload);
         });
+
+        socket.ev.on('group-participants.update', ({ id }) => {
+            this.groupMetadataCache.delete(id);
+        });
     }
 
     private async createSocket(): Promise<WhatsAppSocketLike> {
         const { state, saveCreds } = await this.sessionManager.getAuthState();
         this.saveCreds = saveCreds;
-        const { version } = await fetchLatestBaileysVersion();
 
         const logger = P({ level: this.verboseMode ? 'trace' : 'silent' });
 
         const groupMetadataCache = this.groupMetadataCache;
 
         const socket = makeWASocket({
-            version,
             printQRInTerminal: false,
             auth: {
                 creds: state.creds,
@@ -378,6 +434,7 @@ export class WhatsAppService {
             },
             syncFullHistory: false,
             logger,
+            getMessage: async key => key.fromMe === false ? undefined : this.getCachedSentMessage(key.id),
             cachedGroupMetadata: async (jid: string) => {
                 return groupMetadataCache.get(jid) as any;
             }
@@ -387,6 +444,20 @@ export class WhatsAppService {
     }
 
     async start(options: WhatsAppStartOptions = {}) {
+        if (this.startPromise) return this.startPromise;
+
+        const startPromise = this.startSocket(options);
+        this.startPromise = startPromise;
+        try {
+            await startPromise;
+        } finally {
+            if (this.startPromise === startPromise) {
+                this.startPromise = undefined;
+            }
+        }
+    }
+
+    private async startSocket(options: WhatsAppStartOptions) {
         fileLog(`[start] Starting WhatsApp service, isReconnecting=${this.isReconnecting}`);
         this.intentionalStop = false;
         if (this.isReconnecting) {
@@ -803,6 +874,7 @@ export class WhatsAppService {
         try {
             await this.sendPresence(normalizedJid, 'composing');
             const response = await socket.sendMessage(normalizedJid, { text });
+            this.cacheSentMessage(response?.key?.id, response?.message);
             await this.sendPresence(normalizedJid, 'paused');
 
             return {
@@ -849,6 +921,8 @@ export class WhatsAppService {
         fileLog('[logout] Logging out - setting intentional stop');
         this.intentionalStop = true;
         await this.socket?.logout();
+        this.cleanupSocket();
+        this.isReconnecting = false;
         await this.sessionManager.deleteAuthState();
     }
 

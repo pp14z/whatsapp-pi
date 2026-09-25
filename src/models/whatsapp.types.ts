@@ -19,6 +19,7 @@ export interface QuotedMessageInfo {
 export interface IncomingMessage {
     id: string;
     remoteJid: string;
+    senderJid?: string;
     pushName?: string;
     text?: string;
     timestamp: number;

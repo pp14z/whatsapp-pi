@@ -169,7 +169,7 @@ export default function (pi: ExtensionAPI) {
             const isGroup = message.remoteJid.endsWith('@g.us');
             const senderNumber = isGroup
                 ? message.remoteJid
-                : `+${message.remoteJid.split('@')[0]}`;
+                : (message.senderJid ?? `+${message.remoteJid.split('@')[0]}`);
             await recentsService.recordMessage({
                 messageId: message.id,
                 senderNumber,

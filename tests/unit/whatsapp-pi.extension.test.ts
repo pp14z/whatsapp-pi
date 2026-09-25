@@ -140,7 +140,8 @@ const createMockContext = () => ({
         notify: vi.fn()
     },
     sessionManager: {
-        getEntries: vi.fn().mockReturnValue([])
+        getEntries: vi.fn().mockReturnValue([]),
+        getSessionFile: vi.fn().mockReturnValue(undefined)
     },
     compact: vi.fn(),
     abort: vi.fn()
@@ -354,7 +355,7 @@ describe('whatsapp-pi extension', () => {
         );
     });
 
-    it('executes /compact commands received from WhatsApp', async () => {
+    it('dispatches /compact commands received from WhatsApp through the session router', async () => {
         const registerExtension = await loadExtension();
         const pi = createMockPi();
         const ctx = createMockContext();
@@ -376,11 +377,11 @@ describe('whatsapp-pi extension', () => {
             }]
         });
 
-        expect(ctx.compact).toHaveBeenCalledOnce();
-        expect(mocks.whatsappService.sendMessage).toHaveBeenCalledWith(
-            '5511999998888@s.whatsapp.net',
-            'Session compacted successfully! ✅'
+        expect(pi.sendUserMessage).toHaveBeenCalledWith(
+            '/wa-session compact 5511999998888@s.whatsapp.net',
+            { expandPromptTemplates: true }
         );
+        expect(ctx.compact).not.toHaveBeenCalled();
     });
 
     it('send_wa_message tool reports disconnected status without sending', async () => {

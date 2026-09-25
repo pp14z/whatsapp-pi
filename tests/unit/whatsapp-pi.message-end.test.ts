@@ -139,7 +139,8 @@ const createMockContext = () => ({
         notify: vi.fn()
     },
     sessionManager: {
-        getEntries: vi.fn().mockReturnValue([])
+        getEntries: vi.fn().mockReturnValue([]),
+        getSessionFile: vi.fn().mockReturnValue(undefined)
     },
     compact: vi.fn(),
     abort: vi.fn()

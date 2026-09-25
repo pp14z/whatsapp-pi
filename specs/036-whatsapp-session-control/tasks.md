@@ -27,9 +27,9 @@ Single project (Pi extension) at the repository root: `whatsapp-pi.ts`, `src/`, 
 
 **Purpose**: Define the shared types and i18n keys the rest of the feature builds on.
 
-- [ ] T001 Create the domain types in `src/models/session-commands.types.ts` (`ParsedCommand` discriminated union, `SessionSummary`, `SessionListing`, `ProjectGroup`, `ActiveSessionPointer`, `PendingCommand`, `CommandResult`).
-- [ ] T002 [P] Add session-command message keys (list, switch, new, title, branch, undo, compact, abort, help, errors, queued) to `src/i18n.ts` for all existing locales.
-- [ ] T003 [P] Add shared test doubles for `SessionManager` and `ExtensionCommandContext` in `tests/unit/session-command.test-helpers.ts`.
+- [X] T001 Create the domain types in `src/models/session-commands.types.ts` (`ParsedCommand` discriminated union, `SessionSummary`, `SessionListing`, `ProjectGroup`, `ActiveSessionPointer`, `PendingCommand`, `CommandResult`).
+- [X] T002 [P] Add session-command message keys (list, switch, new, title, branch, undo, compact, abort, help, errors, queued) to `src/i18n.ts` for all existing locales.
+- [X] T003 [P] Add shared test doubles for `SessionManager` and `ExtensionCommandContext` in `tests/unit/session-command.test-helpers.ts`.
 
 ---
 
@@ -39,13 +39,13 @@ Single project (Pi extension) at the repository root: `whatsapp-pi.ts`, `src/`, 
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T004 [P] Implement `SessionStateStore` (atomic read/write of `active-session.json` under `~/.pi/agent/extension/whatsapp-pi/`) in `src/services/session-state.store.ts` (depends on T001).
-- [ ] T005 [P] Implement `SessionCommandParser` (name, aliases `compress`→compact and `stop`→abort, arguments, `unknown` fallback) in `src/services/session-command.parser.ts` (depends on T001).
-- [ ] T006 Register the internal `/wa-session` extension command and add the dispatch helper that calls `pi.sendUserMessage("/wa-session <op> …", { expandPromptTemplates: true })` in `whatsapp-pi.ts` (research R1).
-- [ ] T007 Implement the `SessionCommandRouter` skeleton — authorization via the existing allow-list, message-id dedupe, and a command/help registry — in `src/services/session-command.router.ts` (depends on T001, T005).
-- [ ] T008 Keep the WhatsApp socket alive across session replacement: gate the `session_shutdown` teardown on `reason === "quit"` in `whatsapp-pi.ts` (research R6).
-- [ ] T009 Track busy state from `agent_start`/`agent_settled` and implement the FIFO deferred-command queue drain in `src/services/session-command.router.ts` (depends on T007).
-- [ ] T010 Wire the router into the WhatsApp inbound-message callback so `/`-commands are intercepted before reaching the model, in `whatsapp-pi.ts` (depends on T006, T007).
+- [X] T004 [P] Implement `SessionStateStore` (atomic read/write of `active-session.json` under `~/.pi/agent/extension/whatsapp-pi/`) in `src/services/session-state.store.ts` (depends on T001).
+- [X] T005 [P] Implement `SessionCommandParser` (name, aliases `compress`→compact and `stop`→abort, arguments, `unknown` fallback) in `src/services/session-command.parser.ts` (depends on T001).
+- [X] T006 Register the internal `/wa-session` extension command and add the dispatch helper that calls `pi.sendUserMessage("/wa-session <op> …", { expandPromptTemplates: true })` in `whatsapp-pi.ts` (research R1).
+- [X] T007 Implement the `SessionCommandRouter` skeleton — authorization via the existing allow-list, message-id dedupe, and a command/help registry — in `src/services/session-command.router.ts` (depends on T001, T005).
+- [X] T008 Keep the WhatsApp socket alive across session replacement: gate the `session_shutdown` teardown on `reason === "quit"` in `whatsapp-pi.ts` (research R6).
+- [X] T009 Track busy state from `agent_start`/`agent_settled` and implement the FIFO deferred-command queue drain in `src/services/session-command.router.ts` (depends on T007).
+- [X] T010 Wire the router into the WhatsApp inbound-message callback so `/`-commands are intercepted before reaching the model, in `whatsapp-pi.ts` (depends on T006, T007).
 
 **Checkpoint**: Command pipeline, authorization, deferral, and socket survival are ready.
 
@@ -59,18 +59,18 @@ Single project (Pi extension) at the repository root: `whatsapp-pi.ts`, `src/`, 
 
 ### Tests for User Story 1
 
-- [ ] T011 [P] [US1] Parser tests (names, aliases, unknown) in `tests/unit/session-command.parser.test.ts`.
-- [ ] T012 [P] [US1] Listing tests (grouping by project, ordering, bound/truncation) in `tests/unit/session-query.service.test.ts`.
-- [ ] T013 [P] [US1] Router tests (authorize, dedupe, `/sessions`, `/resume` dispatch, ordinal resolution) in `tests/unit/session-command.router.test.ts`.
+- [X] T011 [P] [US1] Parser tests (names, aliases, unknown) in `tests/unit/session-command.parser.test.ts`.
+- [X] T012 [P] [US1] Listing tests (grouping by project, ordering, bound/truncation) in `tests/unit/session-query.service.test.ts`.
+- [X] T013 [P] [US1] Router tests (authorize, dedupe, `/sessions`, `/resume` dispatch, ordinal resolution) in `tests/unit/session-command.router.test.ts`.
 
 ### Implementation for User Story 1
 
-- [ ] T014 [US1] Implement `SessionQueryService` (`SessionManager.listAll()`, group by `cwd`, bounded formatting) in `src/services/session-query.service.ts` (depends on T001).
-- [ ] T015 [US1] Implement the `/sessions` handler (grouped numbered output, active marker, per-chat ordinal cache) in `src/services/session-command.router.ts` (depends on T009, T014).
-- [ ] T016 [US1] Implement the `/resume` handler (resolve ordinal/id, `ctx.switchSession`, guard missing project dir) in `src/services/session-command.router.ts` (depends on T015).
-- [ ] T017 [US1] Persist the `ActiveSessionPointer` on every session change and include the factual recap in the `/resume` reply in `src/services/session-command.router.ts` (depends on T004, T016).
-- [ ] T018 [US1] Restore the active session at launch: read the pointer and start `pi --session <path>` from `projectCwd` in `scripts/whatsapp-pi-tmux.sh`.
-- [ ] T019 [US1] Notify the user when the restored/invalid session cannot be resumed instead of silently starting new, in `src/services/session-command.router.ts` (depends on T018).
+- [X] T014 [US1] Implement `SessionQueryService` (`SessionManager.listAll()`, group by `cwd`, bounded formatting) in `src/services/session-query.service.ts` (depends on T001).
+- [X] T015 [US1] Implement the `/sessions` handler (grouped numbered output, active marker, per-chat ordinal cache) in `src/services/session-command.router.ts` (depends on T009, T014).
+- [X] T016 [US1] Implement the `/resume` handler (resolve ordinal/id, `ctx.switchSession`, guard missing project dir) in `src/services/session-command.router.ts` (depends on T015).
+- [X] T017 [US1] Persist the `ActiveSessionPointer` on every session change and include the factual recap in the `/resume` reply in `src/services/session-command.router.ts` (depends on T004, T016).
+- [X] T018 [US1] Restore the active session at launch: read the pointer and start `pi --session <path>` from `projectCwd` in `scripts/whatsapp-pi-tmux.sh`.
+- [X] T019 [US1] Notify the user when the restored/invalid session cannot be resumed instead of silently starting new, in `src/services/session-command.router.ts` (depends on T018).
 
 **Checkpoint**: `/sessions` and `/resume` work end-to-end, including restart restore — MVP.
 
@@ -84,13 +84,13 @@ Single project (Pi extension) at the repository root: `whatsapp-pi.ts`, `src/`, 
 
 ### Tests for User Story 2
 
-- [ ] T020 [P] [US2] Tests for `/new` and `/title` (including title on creation and pointer update) in `tests/unit/session-command.router.test.ts`.
+- [X] T020 [P] [US2] Tests for `/new` and `/title` (including title on creation and pointer update) in `tests/unit/session-command.router.test.ts`.
 
 ### Implementation for User Story 2
 
-- [ ] T021 [US2] Implement the `/new [title]` handler (`ctx.newSession` + `setSessionName` + pointer) in `src/services/session-command.router.ts` (depends on T017).
-- [ ] T022 [US2] Implement the `/title <name>` handler (`pi.setSessionName` + pointer refresh) in `src/services/session-command.router.ts` (depends on T017).
-- [ ] T023 [US2] Register `/new` and `/title` in the router's command/help registry in `src/services/session-command.router.ts` (depends on T007).
+- [X] T021 [US2] Implement the `/new [title]` handler (`ctx.newSession` + `setSessionName` + pointer) in `src/services/session-command.router.ts` (depends on T017).
+- [X] T022 [US2] Implement the `/title <name>` handler (`pi.setSessionName` + pointer refresh) in `src/services/session-command.router.ts` (depends on T017).
+- [X] T023 [US2] Register `/new` and `/title` in the router's command/help registry in `src/services/session-command.router.ts` (depends on T007).
 
 **Checkpoint**: US1 and US2 are independently functional.
 
@@ -104,13 +104,13 @@ Single project (Pi extension) at the repository root: `whatsapp-pi.ts`, `src/`, 
 
 ### Tests for User Story 3
 
-- [ ] T024 [P] [US3] Tests for `/branch` and `/undo` (entry resolution, nothing-to-do cases) in `tests/unit/session-command.router.test.ts`.
+- [X] T024 [P] [US3] Tests for `/branch` and `/undo` (entry resolution, nothing-to-do cases) in `tests/unit/session-command.router.test.ts`.
 
 ### Implementation for User Story 3
 
-- [ ] T025 [US3] Implement the `/branch [entryIndex]` handler (resolve entry, `ctx.fork`) in `src/services/session-command.router.ts` (depends on T009).
-- [ ] T026 [US3] Implement the `/undo` handler (resolve entry before last user message, `ctx.navigateTree`) in `src/services/session-command.router.ts` (depends on T009).
-- [ ] T027 [US3] Handle the "nothing to undo"/"nothing to branch from" replies without mutating state in `src/services/session-command.router.ts` (depends on T025, T026).
+- [X] T025 [US3] Implement the `/branch [entryIndex]` handler (resolve entry, `ctx.fork`) in `src/services/session-command.router.ts` (depends on T009).
+- [X] T026 [US3] Implement the `/undo` handler (resolve entry before last user message, `ctx.navigateTree`) in `src/services/session-command.router.ts` (depends on T009).
+- [X] T027 [US3] Handle the "nothing to undo"/"nothing to branch from" replies without mutating state in `src/services/session-command.router.ts` (depends on T025, T026).
 
 **Checkpoint**: US1–US3 independently functional.
 
@@ -124,13 +124,13 @@ Single project (Pi extension) at the repository root: `whatsapp-pi.ts`, `src/`, 
 
 ### Tests for User Story 4
 
-- [ ] T028 [P] [US4] Tests for `/compact`, `/abort`/`/stop`, queue clearing, and `/help` in `tests/unit/session-command.router.test.ts`.
+- [X] T028 [P] [US4] Tests for `/compact`, `/abort`/`/stop`, queue clearing, and `/help` in `tests/unit/session-command.router.test.ts`.
 
 ### Implementation for User Story 4
 
-- [ ] T029 [US4] Implement the `/compact [instructions]` handler (`ctx.compact`, unnecessary/no-op messaging) in `src/services/session-command.router.ts` (depends on T009).
-- [ ] T030 [US4] Implement the `/abort` and `/stop` handlers (`ctx.abort` + clear the deferred queue) in `src/services/session-command.router.ts` (depends on T009).
-- [ ] T031 [US4] Implement the `/help` handler that renders the command/help registry in `src/services/session-command.router.ts` (depends on T007).
+- [X] T029 [US4] Implement the `/compact [instructions]` handler (`ctx.compact`, unnecessary/no-op messaging) in `src/services/session-command.router.ts` (depends on T009).
+- [X] T030 [US4] Implement the `/abort` and `/stop` handlers (`ctx.abort` + clear the deferred queue) in `src/services/session-command.router.ts` (depends on T009).
+- [X] T031 [US4] Implement the `/help` handler that renders the command/help registry in `src/services/session-command.router.ts` (depends on T007).
 
 **Checkpoint**: All four user stories are independently functional.
 
@@ -140,11 +140,11 @@ Single project (Pi extension) at the repository root: `whatsapp-pi.ts`, `src/`, 
 
 **Purpose**: Hardening and documentation that span the stories.
 
-- [ ] T032 [P] Split oversized replies across messages instead of truncating (FR-016) in `src/services/session-command.router.ts`.
-- [ ] T033 [P] Enforce the session-list bound and truncation indicator (FR-015/SC) in `src/services/session-query.service.ts`.
-- [ ] T034 [P] Log at decision points — which command ran, which was deferred, and why it was skipped — in `src/services/session-command.router.ts`.
-- [ ] T035 [P] Document the commands and the systemd/restart behaviour in `README.md`.
-- [ ] T036 Run `npm run lint`, `npm run typecheck`, and `npm test`; resolve all failures.
+- [X] T032 [P] Split oversized replies across messages instead of truncating (FR-016) in `src/services/session-command.router.ts`.
+- [X] T033 [P] Enforce the session-list bound and truncation indicator (FR-015/SC) in `src/services/session-query.service.ts`.
+- [X] T034 [P] Log at decision points — which command ran, which was deferred, and why it was skipped — in `src/services/session-command.router.ts`.
+- [X] T035 [P] Document the commands and the systemd/restart behaviour in `README.md`.
+- [X] T036 Run `npm run lint`, `npm run typecheck`, and `npm test`; resolve all failures.
 - [ ] T037 Execute every scenario in `specs/036-whatsapp-session-control/quickstart.md` and record results.
 
 ---

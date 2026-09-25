@@ -9,6 +9,10 @@ import { extractIncomingText } from './src/services/incoming-message.resolver.js
 import { IncomingMediaService } from './src/services/incoming-media.service.js';
 import { WhatsAppPiLogger } from './src/services/whatsapp-pi.logger.js';
 import { ReactionSender } from './src/services/reaction.sender.js';
+import { SessionCommandParser } from './src/services/session-command.parser.js';
+import { SessionCommandRouter } from './src/services/session-command.router.js';
+import { SessionQueryService } from './src/services/session-query.service.js';
+import { SessionStateStore } from './src/services/session-state.store.js';
 import { initI18n, t } from './src/i18n.js';
 
 const shutdownState = globalThis as typeof globalThis & {
@@ -49,6 +53,25 @@ export default function (pi: ExtensionAPI) {
     const incomingMediaService = new IncomingMediaService(audioService, logger);
     const menuHandler = new MenuHandler(whatsappService, sessionManager, recentsService);
     let _ctx: ExtensionContext | undefined;
+
+    const sessionStateStore = new SessionStateStore();
+    const sessionCommandRouter = new SessionCommandRouter({
+        parser: new SessionCommandParser(),
+        query: new SessionQueryService(),
+        store: sessionStateStore,
+        sendMessage: async (chatJid, text) => {
+            await whatsappService.sendMessage(chatJid, text);
+        },
+        dispatchCommand: (commandText) => {
+            const options: { deliverAs?: "steer" | "followUp"; expandPromptTemplates?: boolean } = {
+                expandPromptTemplates: true
+            };
+            pi.sendUserMessage(commandText, options);
+        },
+        setSessionName: (name) => pi.setSessionName(name),
+        getActiveSessionFile: () => _ctx?.sessionManager.getSessionFile(),
+        logger
+    });
 
     const formatFooterStatus = (status: string) => {
         if (status !== t("service.whatsapp.connected")) {
@@ -91,7 +114,7 @@ export default function (pi: ExtensionAPI) {
     };
 
     // Initial status setup
-    pi.on("session_start", async (_event, ctx) => {
+    pi.on("session_start", async (event, ctx) => {
         _ctx = ctx;
         // Check verbose mode
         const isVerboseFlagSet = process.argv.includes("--verbose");
@@ -108,6 +131,25 @@ export default function (pi: ExtensionAPI) {
         whatsappService.setStatusCallback((status) => {
             ctx.ui.setStatus('whatsapp', formatFooterStatus(status));
         });
+
+        // Keep the persisted active-session pointer in sync with the live session (FR-013).
+        const sessionFile = ctx.sessionManager.getSessionFile();
+        if (sessionFile) {
+            await sessionStateStore.write({
+                sessionFile,
+                sessionId: ctx.sessionManager.getSessionId(),
+                projectCwd: ctx.sessionManager.getCwd(),
+                updatedAt: new Date().toISOString()
+            });
+        }
+
+        // A session switch recreates the runtime but must not re-run one-time setup
+        // or tear down the WhatsApp connection (FR-013 / research R6).
+        if (event.reason === 'new' || event.reason === 'resume' || event.reason === 'fork') {
+            logger.log(`[WhatsApp-Pi] Session replacement (${event.reason}); WhatsApp stays connected.`);
+            refreshFooterStatus();
+            return;
+        }
 
         // Set up group binding if configured
         const boundGroupJid = (pi.getFlag("whatsapp-group") as string) || "";
@@ -246,6 +288,13 @@ export default function (pi: ExtensionAPI) {
 
         const { text, imageBuffer, imageMimeType } = await incomingMediaService.process(resolved, pushName);
 
+        // Session-control commands are handled here and never forwarded to the model.
+        if (remoteJid && !imageBuffer && sessionCommandRouter.isCommand(text)) {
+            logger.log(`[WhatsApp-Pi] Session command from ${pushName} (${sender}): ${text}`);
+            await sessionCommandRouter.handleInbound({ text, chatJid: remoteJid, messageId: msg.key.id ?? '' });
+            return;
+        }
+
         // Format message header with group context when applicable
         const messageHeader = isGroup
             ? `Message from ${pushName} (${participant}) in group ${remoteJid}:`
@@ -269,28 +318,6 @@ export default function (pi: ExtensionAPI) {
         } else {
             pi.sendUserMessage(`${messageHeader} ${fullText}`, { deliverAs: "followUp" });
         }
-
-        // Handle commands
-        if (text.trim().toLowerCase().startsWith('/compact')) {
-            logger.log(`[WhatsApp-Pi] Session compact requested by ${pushName}.`);
-
-            if (_ctx) {
-                _ctx.compact();
-                await whatsappService.sendMessage(remoteJid!, "Session compacted successfully! ✅");
-            }
-            return;
-        }
-
-        if (text.trim().toLowerCase().startsWith('/abort')) {
-            logger.log(`[WhatsApp-Pi] Abort requested by ${pushName}.`);
-            if (_ctx) {
-                _ctx.abort();
-                await whatsappService.sendMessage(remoteJid!, "Aborted! ✅");
-            }
-            return;
-        }
-
-        
     });
 
     // Register send_wa_message tool (LLM-callable)
@@ -512,8 +539,18 @@ export default function (pi: ExtensionAPI) {
         }
     });
 
+    // Internal command used to run session-control operations with a command context.
+    pi.registerCommand("wa-session", {
+        description: "Internal: apply a WhatsApp session-control command",
+        handler: async (args, ctx) => {
+            _ctx = ctx;
+            await sessionCommandRouter.executeInternal(args, ctx);
+        }
+    });
+
     // Handle outgoing messages (Agent -> WhatsApp)
     pi.on("agent_start", async (_event, _ctx) => {
+        sessionCommandRouter.setBusy(true);
         if (sessionManager.getStatus() !== 'connected') return;
         const lastJid = whatsappService.getLastRemoteJid();
         if (lastJid) {
@@ -561,7 +598,16 @@ export default function (pi: ExtensionAPI) {
         }
     });
 
-    pi.on("session_shutdown", async () => {
+    pi.on("agent_end", async () => {
+        sessionCommandRouter.setBusy(false);
+        await sessionCommandRouter.drain();
+    });
+
+    pi.on("session_shutdown", async (event) => {
+        if (event.reason !== 'quit') {
+            logger.log(`[WhatsApp-Pi] Session replacement (${event.reason}); keeping WhatsApp connected.`);
+            return;
+        }
         logger.log("[WhatsApp-Pi] Session shutdown detected. Stopping WhatsApp service...");
         await whatsappService.stop();
     });

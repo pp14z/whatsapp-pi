@@ -214,8 +214,25 @@ The three read-only tools query the local recents store at `~/.pi/agent/extensio
 
 ### WhatsApp Chat Commands
 Send these commands directly in WhatsApp to control the agent session:
-- **`/compact`** - Compact the current Pi session context
-- **`/abort`** - Abort the current Pi agent operation
+
+- **`/sessions`** - List sessions across all projects, grouped by project
+- **`/resume <n|id>`** - Switch to a session (moves the working directory to its project) and get a short recap
+- **`/new [title]`** - Start a new session, optionally named
+- **`/title <name>`** - Rename the active session
+- **`/branch [n]`** - Fork the active session from an earlier point
+- **`/undo`** - Rewind past the last exchange
+- **`/compact [instructions]`** - Compact the active context (alias: `/compress`)
+- **`/abort`** - Interrupt the running turn (alias: `/stop`)
+- **`/help`** - Show the command list
+
+Read-only commands (`/sessions`, `/help`) answer immediately. Commands that change session state
+are deferred while the agent is busy and applied in order once the current turn finishes; `/abort`
+runs immediately and discards any deferred commands. Session commands are handled by the extension
+and are never forwarded to the model.
+
+When the agent runs under the bundled systemd/tmux supervisor, the active session is written to
+`~/.pi/agent/extensions/whatsapp-pi/active-session.json` and restored on restart, so a restart
+continues the same session instead of starting a new one.
 
 ## Project Structure
 
@@ -241,4 +258,5 @@ npm test
 - `--whatsapp-group <jid>` binds Pi to one WhatsApp group.
 - Media handling is local: images for vision, audio via Whisper.cpp + ffmpeg, documents stored under `.pi-data/whatsapp/documents/`.
 - Recents/history live in `~/.pi/agent/extensions/whatsapp-pi/recents/recents.json`.
+- The active-session pointer lives in `~/.pi/agent/extensions/whatsapp-pi/active-session.json` and is used by `scripts/whatsapp-pi-tmux.sh` to resume the session after a restart.
 - Session state, allow lists, and startup reconnects are persisted locally.

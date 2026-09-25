@@ -32,6 +32,6 @@
 ## Notes
 
 - Items marked incomplete require spec updates before `/speckit.clarify` or `/speckit.plan`
-- v1 explicitly defers `/topic` and `/retry` (recorded under Assumptions).
+- v1 explicitly defers `/topic` and `/retry` and drops `/save` (recorded under Assumptions).
 - Single-user, single-active-session scope is recorded as assumptions; revisit in `/speckit.clarify` if multi-user is ever desired.
 - "Existing messaging layer" is a dependency on the repository's current WhatsApp↔Pi support, not an implementation choice.

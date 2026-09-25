@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { SessionInfo } from '@mariozechner/pi-coding-agent';
+import type { SessionInfo } from '@earendil-works/pi-coding-agent';
 import { SessionCommandParser } from '../../src/services/session-command.parser.ts';
 import { SessionCommandRouter } from '../../src/services/session-command.router.ts';
 import { SessionQueryService } from '../../src/services/session-query.service.ts';

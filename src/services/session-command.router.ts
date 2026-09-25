@@ -1,7 +1,7 @@
 import type {
     ExtensionCommandContext,
     SessionMessageEntry
-} from '@mariozechner/pi-coding-agent';
+} from '@earendil-works/pi-coding-agent';
 import { t } from '../i18n.js';
 import {
     DEDUPE_LIMIT,

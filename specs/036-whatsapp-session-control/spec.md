@@ -16,6 +16,7 @@
 - Q: Should the user be able to interrupt a running turn from chat? → A: Yes — add `/abort` (alias `/stop`) to stop the current turn and discard any deferred commands.
 - Q: What should `/save` do? → A: Drop it — sessions already persist automatically and the command was never used.
 - Q: What should the agent reply when resuming a session? → A: A confirmation plus a short factual recap — project, title, age/message count, and the last exchange.
+- Q: What happens to the active session when the agent process restarts? → A: The last active session (including the project it belongs to) is restored automatically; a restart must never silently start a new session.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -90,7 +91,7 @@ The user sends `/compact` (alias `/compress`) to reduce the active context when 
 - `/branch` when there is no prior user message: reply that there is nothing to branch from.
 - `/compact` on a short session: reply that compaction is unnecessary or a no-op; no data loss.
 - `/abort` (alias `/stop`) when nothing is running: reply that there is nothing to abort; no state change.
-- Agent restarted (server reboot or crash): the active session is restored so follow-up messages continue the same session.
+- Agent restarted (server reboot or crash): the previously active session (including one belonging to another project) is restored so follow-up messages continue the same session. If the remembered session's project directory no longer exists or the session is gone, the agent starts a new session and notifies the user. A WhatsApp socket reconnect within a running agent MUST NOT change the active session.
 - Unknown or unauthorized sender: commands are ignored (or answered with a generic refusal) and never alter session state.
 - Very large session list: `/sessions` is bounded to the most recent entries with a clear indication that older ones are omitted.
 - Duplicate delivery of the same WhatsApp message must not execute a command twice.
@@ -112,7 +113,7 @@ The user sends `/compact` (alias `/compress`) to reduce the active context when 
 - **FR-010**: Incoming messages that are not commands MUST continue to be delivered to the active session, and that session's replies MUST return to the originating WhatsApp chat.
 - **FR-011**: The system MUST reject or ignore session-control commands from senders who are not authorized.
 - **FR-012**: When a mutating session command arrives while the agent is mid-turn, the system MUST NOT lose in-progress work: it MUST acknowledge the command, defer it, and apply it (together with any following messages) in order once the turn finishes. Read-only commands (listing, status, help) MUST be answered immediately, even mid-turn.
-- **FR-013**: The system MUST persist the identity of the active session so it survives an agent restart and reconnection.
+- **FR-013**: The system MUST persist the active session (including the project it belongs to) outside the session itself, and on process restart MUST resume that exact session rather than silently starting a new one; if the remembered session can no longer be resumed, the system MUST start a new session only after notifying the user.
 - **FR-014**: The system MUST safely ignore duplicate deliveries of the same inbound message.
 - **FR-015**: The system MUST provide a discoverable help listing of supported commands.
 - **FR-016**: The system MUST bound the size of any single reply it sends to WhatsApp, splitting long output across multiple messages rather than silently truncating.
@@ -124,7 +125,7 @@ The user sends `/compact` (alias `/compress`) to reduce the active context when 
 - **User**: the authorized WhatsApp identity permitted to control sessions.
 - **Session**: a saved coding conversation with an identifier, optional title, creation/last-active time, message count, a file location, and the project directory it belongs to; exactly one is active at a time.
 - **Session Control Command**: a normalized instruction (name plus arguments) recognized by the agent and mapped to a session operation.
-- **Bridge State**: the persisted record of the active session and command-processing bookkeeping (for example, the last processed message id).
+- **Bridge State**: the persisted record of the active session (its file path and the project it belongs to) held outside any single session, plus command-processing bookkeeping (for example, the last processed message id).
 
 ## Success Criteria *(mandatory)*
 
@@ -132,7 +133,7 @@ The user sends `/compact` (alias `/compress`) to reduce the active context when 
 
 - **SC-001**: From a cold WhatsApp chat, the user can identify and switch to the intended session in at most 3 messages (`/sessions`, `/resume <n>`, confirmation).
 - **SC-002**: 95% of valid session-control commands return a confirmation to WhatsApp within 5 seconds.
-- **SC-003**: After an agent restart, the user can continue in the previously active session without re-selecting it, in 100% of trials.
+- **SC-003**: After an agent restart, the user can continue in the previously active session — including when it belongs to another project — without re-selecting it, in 100% of trials.
 - **SC-004**: Zero commands are executed from unauthorized senders, and zero duplicate deliveries execute a command twice, in adversarial and double-delivery tests.
 - **SC-005**: The pre-operation session remains recoverable after `/undo`, `/branch`, or `/compact` — no session content is destroyed.
 - **SC-006**: Every recognized command produces exactly one user-visible outcome message per invocation.
@@ -145,7 +146,7 @@ The user sends `/compact` (alias `/compress`) to reduce the active context when 
 - **One active session at a time**: session control changes a single shared active session rather than running multiple sessions concurrently.
 - **All projects**: listing and switching span every project whose sessions are stored on the same host; selecting a session from another project moves the agent's working directory to that project for subsequent messages.
 - **Existing messaging layer**: this builds on the existing WhatsApp↔Pi messaging support (pairing, allow-list, message send/receive); it adds session control and does not replace the messaging layer.
-- **Persistent host**: the agent runs continuously on a supervised server rather than on the user's laptop.
+- **Persistent host**: the agent runs continuously on a supervised server rather than on the user's laptop, and the host launches it so the persisted active session can be restored after a restart.
 - **Terminology mapping**: `/compress` is an alias for the platform's compaction operation and `/stop` is an alias for `/abort`; `/topic` and `/retry` are out of scope for v1 (not currently used) and may be added later; `/save` is dropped (sessions already persist automatically).
 - **Session identity**: sessions are the platform's native saved coding sessions; the feature does not introduce a separate conversation store.
 - **Command prefix**: commands are single-line messages beginning with `/`; a leading slash is reserved for control and is not sent to the model.

@@ -1,6 +1,6 @@
 # whatsapp-pi Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-05-16
+Auto-generated from all feature plans. Last updated: 2026-09-25
 
 ## Active Technologies
 - [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION] + [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION] (002-manual-whatsapp-connection)
@@ -51,6 +51,7 @@ npm test; npm run lint
 TypeScript 5.x / Node.js 20+: Follow standard conventions
 
 ## Recent Changes
+- 036-whatsapp-session-control: Added TypeScript 5.x / Node.js 20+ + `@whiskeysockets/baileys`, `@mariozechner/pi-coding-agent`, `pino`, `qrcode-terminal`
 - 033-remove-reaction-mode: Added TypeScript 5.x / Node.js 20+ + `@whiskeysockets/baileys`, `pi-agent-sdk`, `pino`, `qrcode-terminal`
 - 028-group-reaction-mode: Added TypeScript 5.x / Node.js 20+ + `@whiskeysockets/baileys`, `pino`, `qrcode-terminal`, `pi-agent-sdk`
 - 027-pdf-document-parsing: Added TypeScript 5.x / Node.js 20+ + `@whiskeysockets/baileys`, `@llamaindex/liteparse`, `pino`, `qrcode-terminal`, `@mariozechner/pi-coding-agent`
@@ -61,5 +62,5 @@ TypeScript 5.x / Node.js 20+: Follow standard conventions
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
-shell commands, and other important information, read specs/035-storage-path-migration/plan.md
+shell commands, and other important information, read specs/036-whatsapp-session-control/plan.md
 <!-- SPECKIT END -->

@@ -42,8 +42,10 @@ interface ConnectionUpdateEvent {
 interface IncomingMessageKey {
     id?: string;
     remoteJid?: string;
+    remoteJidAlt?: string;
     fromMe?: boolean;
     participant?: string;
+    participantAlt?: string;
 }
 
 interface IncomingMessageContextInfo {
@@ -100,6 +102,11 @@ interface CachedSentMessage {
 
 interface WhatsAppSocketLike {
     user?: { id?: string; lid?: string };
+    signalRepository?: {
+        lidMapping?: {
+            getPNForLID(lid: string): Promise<string | null>;
+        };
+    };
     ev: {
         on(event: 'connection.update', handler: (update: ConnectionUpdateEvent) => void | Promise<void>): void;
         on(event: 'creds.update', handler: () => void | Promise<void>): void;
@@ -248,6 +255,55 @@ export class WhatsAppService {
         }
 
         return value;
+    }
+
+    private toContactNumberFromJid(jid: string): string {
+        const localPart = jid.split('@')[0].split(':')[0];
+        return this.normalizeContactNumber(localPart);
+    }
+
+    /**
+     * Resolves the identity used for direct-message filtering.
+     *
+     * WhatsApp now delivers one-to-one chats addressed by LID (e.g. `123@lid`).
+     * The allow list is phone-number based, so when the remote JID is a LID we
+     * resolve the corresponding phone number and return the LID as an alias so
+     * both forms keep matching.
+     */
+    private resolveDirectSenderNumber(
+        message: IncomingMessageLike,
+        remoteJid: string
+    ): { senderNumber: string; aliasSenderNumbers: string[]; lidToResolve?: string } {
+        const remoteSenderNumber = this.toContactNumberFromJid(remoteJid);
+
+        if (!remoteJid.endsWith('@lid')) {
+            return { senderNumber: remoteSenderNumber, aliasSenderNumbers: [] };
+        }
+
+        const aliases = [remoteSenderNumber, remoteJid];
+
+        if (message.key.remoteJidAlt) {
+            return {
+                senderNumber: this.toContactNumberFromJid(message.key.remoteJidAlt),
+                aliasSenderNumbers: aliases
+            };
+        }
+
+        return { senderNumber: remoteSenderNumber, aliasSenderNumbers: aliases, lidToResolve: remoteJid };
+    }
+
+    private async lookupPhoneJidForLid(lidJid: string): Promise<string | undefined> {
+        const lidMapping = this.socket?.signalRepository?.lidMapping;
+        if (!lidMapping) {
+            return undefined;
+        }
+
+        try {
+            return await lidMapping.getPNForLID(lidJid) ?? undefined;
+        } catch (error) {
+            fileLog(`[handleIncomingMessages] Failed to resolve LID ${lidJid} to a phone number: ${error instanceof Error ? error.message : String(error)}`);
+            return undefined;
+        }
     }
 
     private normalizeRecipientJid(jid: string): string {
@@ -709,7 +765,7 @@ export class WhatsAppService {
         return Date.now();
     }
 
-    private async recordIncomingMessage(message: IncomingMessageLike, remoteJid: string, text: string) {
+    private async recordIncomingMessage(message: IncomingMessageLike, remoteJid: string, senderJid: string, text: string) {
         // Extract quote information and original message (for reactions) from the message
         const resolved = extractIncomingText(message.message, this.recentsService);
         const quotedMessage = 'quotedMessage' in resolved ? resolved.quotedMessage : undefined;
@@ -722,6 +778,7 @@ export class WhatsAppService {
         void Promise.resolve(this.onIncomingMessageRecorded?.({
             id: message.key.id ?? remoteJid,
             remoteJid,
+            senderJid,
             pushName: message.pushName || undefined,
             text,
             timestamp: this.getIncomingTimestamp(message.messageTimestamp),
@@ -756,15 +813,25 @@ export class WhatsAppService {
             void this.prepareGroupSession(remoteJid);
         }
 
-        const senderJid = isGroup
-            ? remoteJid
-            : this.normalizeContactNumber(remoteJid.split('@')[0]);
+        const resolvedSender = isGroup
+            ? { senderNumber: remoteJid, aliasSenderNumbers: [] as string[], lidToResolve: undefined as string | undefined }
+            : this.resolveDirectSenderNumber(message, remoteJid);
+
+        let senderJid = resolvedSender.senderNumber;
+        const aliasSenderNumbers = [...resolvedSender.aliasSenderNumbers];
+
+        if (resolvedSender.lidToResolve) {
+            const phoneJid = await this.lookupPhoneJidForLid(resolvedSender.lidToResolve);
+            if (phoneJid) {
+                senderJid = this.toContactNumberFromJid(phoneJid);
+            }
+        }
         
         // Process the message with full context (including reaction lookup)
         const resolved = extractIncomingText(message.message, this.recentsService);
         const displayText = resolved.text;
         
-        void this.recordIncomingMessage(message, remoteJid, displayText);
+        void this.recordIncomingMessage(message, remoteJid, senderJid, displayText);
 
         const pushName = message.pushName || undefined;
 
@@ -779,7 +846,10 @@ export class WhatsAppService {
             return;
         }
 
-        if (!this.sessionManager.isConversationAllowed(senderJid)) {
+        const isAllowed = this.sessionManager.isConversationAllowed(senderJid)
+            || aliasSenderNumbers.some(alias => this.sessionManager.isConversationAllowed(alias));
+
+        if (!isAllowed) {
             if (this.isVerbose()) {
                 console.log(t('service.whatsapp.ignoredNotAllowed', { senderJid }));
             }

@@ -60,6 +60,75 @@ describe('WhatsAppService Filtering', () => {
         expect(callback).toHaveBeenCalledTimes(1); // Still 1
     });
 
+    it('should allow a LID-addressed direct message when its phone number is allowed', async () => {
+        const callback = vi.fn();
+        const recorder = vi.fn();
+        whatsappService.setMessageCallback(callback);
+        whatsappService.setIncomingMessageRecorder(recorder);
+
+        await sessionManager.setStatus('connected');
+        await sessionManager.addNumber('+5511999998888');
+
+        await whatsappService.handleIncomingMessages({
+            messages: [{
+                key: {
+                    remoteJid: '1234567890@lid',
+                    remoteJidAlt: '5511999998888@s.whatsapp.net'
+                },
+                message: { conversation: 'Hello' },
+                pushName: 'Pedro'
+            }]
+        });
+
+        expect(callback).toHaveBeenCalledTimes(1);
+        expect(recorder).toHaveBeenCalledWith(expect.objectContaining({
+            remoteJid: '1234567890@lid',
+            senderJid: '+5511999998888'
+        }));
+    });
+
+    it('should allow a LID-addressed direct message when the LID itself is allowed', async () => {
+        const callback = vi.fn();
+        whatsappService.setMessageCallback(callback);
+
+        await sessionManager.setStatus('connected');
+        await sessionManager.addNumber('1234567890@lid');
+
+        await whatsappService.handleIncomingMessages({
+            messages: [{
+                key: {
+                    remoteJid: '1234567890@lid',
+                    remoteJidAlt: '5511999998888@s.whatsapp.net'
+                },
+                message: { conversation: 'Hello' },
+                pushName: 'Pedro'
+            }]
+        });
+
+        expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    it('should resolve a LID to its phone number via the signal store when remoteJidAlt is absent', async () => {
+        const callback = vi.fn();
+        const getPNForLID = vi.fn().mockResolvedValue('5511999998888:0@s.whatsapp.net');
+        whatsappService.setMessageCallback(callback);
+        (whatsappService as any).socket = { signalRepository: { lidMapping: { getPNForLID } } };
+
+        await sessionManager.setStatus('connected');
+        await sessionManager.addNumber('+5511999998888');
+
+        await whatsappService.handleIncomingMessages({
+            messages: [{
+                key: { remoteJid: '1234567890@lid' },
+                message: { conversation: 'Hello' },
+                pushName: 'Pedro'
+            }]
+        });
+
+        expect(getPNForLID).toHaveBeenCalledWith('1234567890@lid');
+        expect(callback).toHaveBeenCalledTimes(1);
+    });
+
     it('should resolve an allowed contact JID to its configured send phone number for outbound replies', async () => {
         await sessionManager.addNumber('+1234567890');
         await sessionManager.setContactSendNumber('+1234567890', '+5511999998888');

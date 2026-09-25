@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SessionInfo } from '@mariozechner/pi-coding-agent';
+import type { SessionInfo } from '@earendil-works/pi-coding-agent';
 import { SessionQueryService } from '../../src/services/session-query.service.ts';
 
 function info(overrides: Partial<SessionInfo>): SessionInfo {

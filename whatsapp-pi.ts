@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { SessionManager } from './src/services/session.manager.js';
 import { WhatsAppService } from './src/services/whatsapp.service.js';
@@ -63,10 +63,7 @@ export default function (pi: ExtensionAPI) {
             await whatsappService.sendMessage(chatJid, text);
         },
         dispatchCommand: (commandText) => {
-            const options: { deliverAs?: "steer" | "followUp"; expandPromptTemplates?: boolean } = {
-                expandPromptTemplates: true
-            };
-            pi.sendUserMessage(commandText, options);
+            pi.sendUserMessage(commandText, { expandPromptTemplates: true });
         },
         setSessionName: (name) => pi.setSessionName(name),
         getActiveSessionFile: () => _ctx?.sessionManager.getSessionFile(),
@@ -598,7 +595,7 @@ export default function (pi: ExtensionAPI) {
         }
     });
 
-    pi.on("agent_end", async () => {
+    pi.on("agent_settled", async () => {
         sessionCommandRouter.setBusy(false);
         await sessionCommandRouter.drain();
     });

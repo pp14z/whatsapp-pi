@@ -217,13 +217,15 @@ Send these commands directly in WhatsApp to control the agent session:
 
 - **`/sessions`** - List sessions across all projects, grouped by project
 - **`/resume <n|id>`** - Switch to a session (moves the working directory to its project) and get a short recap
-- **`/new [title]`** - Start a new session, optionally named
-- **`/title <name>`** - Rename the active session
+- **`/new <path> [title]`** - Start a new session in a project directory (use `.` for the current project), optionally named
+- **`/title [name]`** - Show the active session's title (or its id when untitled), or rename it when a name is given
 - **`/branch [n]`** - Fork the active session from an earlier point
 - **`/undo`** - Rewind past the last exchange
 - **`/compact [instructions]`** - Compact the active context (alias: `/compress`)
 - **`/abort`** - Interrupt the running turn (alias: `/stop`)
 - **`/help`** - Show the command list
+
+A new session with no title is auto-titled from its first message (model-generated, with a text fallback); a title set with `/new <path> <title>` or `/title <name>` is never overwritten.
 
 Read-only commands (`/sessions`, `/help`) answer immediately. Commands that change session state
 are deferred while the agent is busy and applied in order once the current turn finishes; `/abort`

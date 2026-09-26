@@ -28,10 +28,12 @@ Manual validation steps for feature `036-whatsapp-session-control`. Automated co
 
 ## 4. Start, title, and rename
 
-1. Send `/new my-task`.
-2. **Expect**: a fresh active session named `my-task`.
+1. Send `/new . my-task` (`.` = the current project; use an absolute or `~` path for another project).
+2. **Expect**: a fresh active session in that project, named `my-task`; the confirmation names the directory.
 3. Send `/title renamed`; then `/sessions`.
 4. **Expect**: the entry now reads `renamed`.
+5. Send `/title` with no name.
+6. **Expect**: a reply with the current title, or the session id when the session is untitled.
 
 ## 5. Undo and branch
 
@@ -50,7 +52,7 @@ Manual validation steps for feature `036-whatsapp-session-control`. Automated co
 ## 7. Deferral while busy
 
 1. Start a long-running request.
-2. While it runs, send `/new queued-task`.
+2. While it runs, send `/new . queued-task`.
 3. **Expect**: an immediate "queued" acknowledgement; the new session becomes active only after the current turn finishes.
 
 ## 8. Restart restores the active session

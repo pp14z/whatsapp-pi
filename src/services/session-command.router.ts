@@ -12,6 +12,7 @@ import {
     type PendingCommand,
     type SessionSummary
 } from '../models/session-commands.types.js';
+import { createProjectSessionFile, resolveProjectPath as defaultResolveProjectPath } from './project-session.js';
 import { HELP_ENTRIES, SessionCommandParser } from './session-command.parser.js';
 import { SessionQueryService } from './session-query.service.js';
 import { SessionStateStore } from './session-state.store.js';
@@ -34,6 +35,14 @@ export interface SessionCommandRouterDeps {
     setSessionName: (name: string) => void;
     /** Current active session file, for the `/sessions` marker. */
     getActiveSessionFile: () => string | undefined;
+    /** Current active session title, for the `/title` query. */
+    getActiveSessionName?: () => string | undefined;
+    /** Current active session id, for the `/title` query fallback. */
+    getActiveSessionId?: () => string | undefined;
+    /** Create a persisted session file for a project cwd; returns its path. */
+    createSessionFile?: (cwd: string) => string;
+    /** Resolve a user-supplied project path against the active cwd. */
+    resolveProjectPath?: (input: string, baseCwd: string) => string | undefined;
     logger: SessionCommandLogger;
     /** How long to wait for a dispatched command to settle (default 15s). */
     dispatchTimeoutMs?: number;
@@ -78,6 +87,8 @@ function lastIndexWhere<T>(items: readonly T[], predicate: (item: T) => boolean)
  * `ExtensionCommandContext` (the only place session replacement is legal).
  */
 export class SessionCommandRouter {
+    private readonly createSessionFile: (cwd: string) => string;
+    private readonly resolveProjectPath: (input: string, baseCwd: string) => string | undefined;
     private readonly pending: PendingCommand[] = [];
     private readonly seenOrder: string[] = [];
     private readonly seenSet = new Set<string>();
@@ -86,7 +97,10 @@ export class SessionCommandRouter {
     private draining = false;
     private lastOrdered: SessionSummary[] = [];
 
-    constructor(private readonly deps: SessionCommandRouterDeps) {}
+    constructor(private readonly deps: SessionCommandRouterDeps) {
+        this.createSessionFile = deps.createSessionFile ?? createProjectSessionFile;
+        this.resolveProjectPath = deps.resolveProjectPath ?? defaultResolveProjectPath;
+    }
 
     isCommand(text: string): boolean {
         return this.deps.parser.isCommand(text);
@@ -110,6 +124,12 @@ export class SessionCommandRouter {
 
         if (command.kind === 'unknown') {
             await this.deps.sendMessage(input.chatJid, t('session.unknownCommand', { command: command.raw }));
+            return true;
+        }
+
+        // An argument-less `/title` is a read-only query and is answered immediately.
+        if (command.kind === 'title' && command.args.length === 0) {
+            await this.deps.sendMessage(input.chatJid, this.currentTitleMessage());
             return true;
         }
 
@@ -184,6 +204,14 @@ export class SessionCommandRouter {
         }
     }
 
+    private currentTitleMessage(): string {
+        const name = this.deps.getActiveSessionName?.();
+        if (name) {
+            return t('session.title.current', { name });
+        }
+        return t('session.title.none', { id: this.deps.getActiveSessionId?.() ?? '' });
+    }
+
     private async runReadOnly(command: ParsedCommand): Promise<CommandResult> {
         if (command.kind === 'help') {
             return { ok: true, message: this.helpText(), changedActiveSession: false };
@@ -205,7 +233,7 @@ export class SessionCommandRouter {
             case 'new':
                 return this.newSession(rest.join(' ').trim(), ctx);
             case 'title':
-                return this.rename(rest.join(' ').trim());
+                return this.rename(rest.join(' ').trim(), ctx);
             case 'branch':
                 return this.branch(rest[0], ctx);
             case 'undo':
@@ -241,8 +269,26 @@ export class SessionCommandRouter {
         };
     }
 
-    private async newSession(title: string, ctx: ExtensionCommandContext): Promise<CommandResult> {
-        await ctx.newSession({
+    private async newSession(args: string, ctx: ExtensionCommandContext): Promise<CommandResult> {
+        const trimmed = args.trim();
+        if (!trimmed) {
+            return { ok: false, message: t('session.new.pathRequired'), changedActiveSession: false };
+        }
+
+        const parts = trimmed.split(/\s+/);
+        const pathInput = parts[0] ?? '';
+        const title = parts.slice(1).join(' ').trim();
+        const projectPath = this.resolveProjectPath(pathInput, ctx.sessionManager.getCwd());
+        if (!projectPath) {
+            return {
+                ok: false,
+                message: t('session.new.pathNotFound', { path: pathInput }),
+                changedActiveSession: false
+            };
+        }
+
+        const sessionFile = this.createSessionFile(projectPath);
+        await ctx.switchSession(sessionFile, {
             withSession: async (replacementCtx) => {
                 await this.persistPointer(replacementCtx.sessionManager);
             }
@@ -255,15 +301,27 @@ export class SessionCommandRouter {
         return {
             ok: true,
             message: title
-                ? t('session.new.createdTitle', { title })
-                : t('session.new.created'),
+                ? t('session.new.createdProjectTitle', { project: projectPath, title })
+                : t('session.new.createdProject', { project: projectPath }),
             changedActiveSession: true
         };
     }
 
-    private async rename(name: string): Promise<CommandResult> {
+    private async rename(name: string, ctx: ExtensionCommandContext): Promise<CommandResult> {
         if (!name) {
-            return { ok: false, message: t('session.title.missing'), changedActiveSession: false };
+            const current = ctx.sessionManager.getSessionName();
+            if (current) {
+                return {
+                    ok: true,
+                    message: t('session.title.current', { name: current }),
+                    changedActiveSession: false
+                };
+            }
+            return {
+                ok: true,
+                message: t('session.title.none', { id: ctx.sessionManager.getSessionId() }),
+                changedActiveSession: false
+            };
         }
         this.deps.setSessionName(name);
         return { ok: true, message: t('session.title.renamed', { name }), changedActiveSession: false };

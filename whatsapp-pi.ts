@@ -12,6 +12,7 @@ import { ReactionSender } from './src/services/reaction.sender.js';
 import { SessionCommandParser } from './src/services/session-command.parser.js';
 import { SessionCommandRouter } from './src/services/session-command.router.js';
 import { SessionQueryService } from './src/services/session-query.service.js';
+import { SessionTitleService } from './src/services/session-title.service.js';
 import { SessionStateStore } from './src/services/session-state.store.js';
 import { initI18n, t } from './src/i18n.js';
 
@@ -55,6 +56,7 @@ export default function (pi: ExtensionAPI) {
     let _ctx: ExtensionContext | undefined;
 
     const sessionStateStore = new SessionStateStore();
+    const sessionTitleService = new SessionTitleService();
     const sessionCommandRouter = new SessionCommandRouter({
         parser: new SessionCommandParser(),
         query: new SessionQueryService(),
@@ -67,6 +69,8 @@ export default function (pi: ExtensionAPI) {
         },
         setSessionName: (name) => pi.setSessionName(name),
         getActiveSessionFile: () => _ctx?.sessionManager.getSessionFile(),
+        getActiveSessionName: () => pi.getSessionName(),
+        getActiveSessionId: () => _ctx?.sessionManager.getSessionId(),
         logger
     });
 
@@ -305,6 +309,23 @@ export default function (pi: ExtensionAPI) {
         }
 
         logger.log(`[WhatsApp-Pi] ${messageHeader} ${fullText}`);
+
+        // Give a new, unnamed session a model-generated title from its first message.
+        if (!pi.getSessionName() && _ctx) {
+            const titleContext = _ctx;
+            const sessionId = titleContext.sessionManager.getSessionId();
+            void sessionTitleService.generate(titleContext, text)
+                .then((title) => {
+                    if (
+                        title
+                        && !pi.getSessionName()
+                        && _ctx?.sessionManager.getSessionId() === sessionId
+                    ) {
+                        pi.setSessionName(title);
+                    }
+                })
+                .catch(() => {});
+        }
 
         // Use a standard delivery for ALL messages to ensure TUI consistency
         if (imageBuffer && imageMimeType) {

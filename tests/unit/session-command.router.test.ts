@@ -43,6 +43,14 @@ function makeRouter(options: { sessions?: SessionInfo[] } = {}) {
         },
         setSessionName,
         getActiveSessionFile: () => undefined,
+        getActiveSessionName: () => undefined,
+        getActiveSessionId: () => 's',
+        createSessionFile: (cwd: string) => `${cwd}/new-session.jsonl`,
+        resolveProjectPath: (input: string, baseCwd: string) => {
+            if (input === '.') return baseCwd;
+            if (input.startsWith('/') || input.startsWith('~')) return input;
+            return undefined;
+        },
         logger: { log: () => {} },
         dispatchTimeoutMs: 10
     };
@@ -51,22 +59,25 @@ function makeRouter(options: { sessions?: SessionInfo[] } = {}) {
     return { router, sent, dispatched, writes, setSessionName };
 }
 
-function fakeContext() {
+function fakeContext(options: { sessionName?: string; cwd?: string } = {}) {
+    const switches: string[] = [];
     const sessionManager = {
         getSessionFile: () => '/projects/alpha/s.jsonl',
         getSessionId: () => 's',
-        getCwd: () => '/projects/alpha',
-        getSessionName: () => undefined,
+        getCwd: () => options.cwd ?? '/projects/alpha',
+        getSessionName: () => options.sessionName,
         getBranch: () => []
     };
     const replacement = { sessionManager };
     return {
         sessionManager,
+        switches,
         newSession: async (opts?: { withSession?: (ctx: unknown) => Promise<void> }) => {
             if (opts?.withSession) await opts.withSession(replacement);
             return { cancelled: false };
         },
-        switchSession: async (_path: string, opts?: { withSession?: (ctx: unknown) => Promise<void> }) => {
+        switchSession: async (path: string, opts?: { withSession?: (ctx: unknown) => Promise<void> }) => {
+            switches.push(path);
             if (opts?.withSession) await opts.withSession(replacement);
             return { cancelled: false };
         },
@@ -101,6 +112,13 @@ describe('SessionCommandRouter', () => {
         expect(dispatched).toHaveLength(0);
         expect(sent[0].text).toContain('/sessions');
         expect(sent[0].text).toContain('/resume');
+    });
+
+    it('answers an argument-less /title immediately without dispatching', async () => {
+        const { router, sent, dispatched } = makeRouter();
+        await router.handleInbound({ text: '/title', chatJid: 'jid', messageId: 'm1' });
+        expect(dispatched).toHaveLength(0);
+        expect(sent[0].text).toContain('no title');
     });
 
     it('answers /sessions with the grouped listing', async () => {
@@ -153,11 +171,48 @@ describe('SessionCommandRouter', () => {
         expect(sent[0].text).toContain('my long name');
     });
 
-    it('starts a new session and persists the pointer', async () => {
+    it('reports the current title for /title with no name', async () => {
+        const { router, sent, setSessionName } = makeRouter();
+        await router.executeInternal('title jid', fakeContext({ sessionName: 'my-session' }) as never);
+        expect(setSessionName).not.toHaveBeenCalled();
+        expect(sent[0].text).toContain('my-session');
+    });
+
+    it('reports the session id for /title when no title is set', async () => {
+        const { router, sent } = makeRouter();
+        await router.executeInternal('title jid', fakeContext() as never);
+        expect(sent[0].text).toContain('no title');
+        expect(sent[0].text).toContain('s');
+    });
+
+    it('starts a new session in the given project and persists the pointer', async () => {
+        const { router, sent, writes } = makeRouter();
+        const ctx = fakeContext();
+        await router.executeInternal('new jid .', ctx as never);        expect(writes).toHaveLength(1);
+        expect(ctx.switches).toEqual(['/projects/alpha/new-session.jsonl']);
+        expect(sent[0].text).toContain('New session started in /projects/alpha');
+    });
+
+    it('creates a titled session in the given project', async () => {
+        const { router, sent, setSessionName } = makeRouter();
+        const ctx = fakeContext();
+        await router.executeInternal('new jid . my task', ctx as never);
+        expect(setSessionName).toHaveBeenCalledWith('my task');
+        expect(sent[0].text).toContain("as 'my task'");
+    });
+
+    it('requires a project path for /new', async () => {
         const { router, sent, writes } = makeRouter();
         await router.executeInternal('new jid', fakeContext() as never);
-        expect(writes).toHaveLength(1);
-        expect(sent[0].text).toContain('New session started');
+        expect(writes).toHaveLength(0);
+        expect(sent[0].text).toContain('project path is required');
+    });
+
+    it('rejects a /new path that is not an existing directory', async () => {
+        const { router, sent, writes } = makeRouter();
+        await router.executeInternal('new jid bogus title', fakeContext() as never);
+        expect(writes).toHaveLength(0);
+        expect(sent[0].text).toContain('not found');
     });
 
     it('resumes a session by id and persists the pointer', async () => {

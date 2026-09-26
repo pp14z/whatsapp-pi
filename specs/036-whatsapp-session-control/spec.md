@@ -17,6 +17,9 @@
 - Q: What should `/save` do? → A: Drop it — sessions already persist automatically and the command was never used.
 - Q: What should the agent reply when resuming a session? → A: A confirmation plus a short factual recap — project, title, age/message count, and the last exchange.
 - Q: What happens to the active session when the agent process restarts? → A: The last active session (including the project it belongs to) is restored automatically; a restart must never silently start a new session.
+- Q: Where does `/new` create the session? → A: The project path is a required argument; `/new <path> [title]` creates the session in that directory (use `.` for the current project). A missing or invalid path is rejected and the active session is unchanged.
+- Q: What does `/title` do without a name? → A: It reports the active session's current title, falling back to the session id when the session is untitled.
+- Q: How does a new session get a title? → A: When a session has no title, its first non-command message is used to generate a short title with the active model; a deterministic derivation is used as a fallback if the model call fails. A title the user set explicitly is never overwritten.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -38,17 +41,19 @@ While away from my computer, I open my WhatsApp chat with the agent and send `/s
 
 ### User Story 2 - Start and name a session (Priority: P2)
 
-The user sends `/new` to start a focused session for a new task, optionally `/new fix-login-bug` to name it immediately, or `/title better-name` afterwards. The new session becomes active and appears in `/sessions`.
+The user sends `/new <path>` to start a focused session for a new task in a specific project, optionally `/new <path> fix-login-bug` to name it immediately, or `/title better-name` afterwards. The new session becomes active and appears in `/sessions`.
 
 **Why this priority**: New work should not inherit a bloated context. Starting clean and naming it makes `/sessions` useful later.
 
-**Independent Test**: Send `/new my-task`, send a message, run `/sessions`, and verify a session named "my-task" exists and is active; run `/title renamed` and verify the name updates.
+**Independent Test**: Send `/new . my-task`, send a message, run `/sessions`, and verify a session named "my-task" exists in the current project and is active; run `/title renamed` and verify the name updates; run `/title` with no name and verify it reports the current title (or the session id).
 
 **Acceptance Scenarios**:
 
-1. **Given** an active session, **When** `/new` is sent, **Then** a fresh empty session becomes active and the agent confirms it.
-2. **Given** `/new <title>`, **When** sent, **Then** the new session is created and titled `<title>`.
-3. **Given** an active session, **When** `/title <name>` is sent, **Then** the current session's title is updated and the change is visible in a later `/sessions`.
+1. **Given** an active session, **When** `/new <path>` is sent, **Then** a fresh empty session is created in that project directory, becomes active, and the agent confirms it naming the directory.
+2. **Given** `/new <path> <title>`, **When** sent, **Then** the new session is created in that project and titled `<title>`.
+3. **Given** `/new` with no path, or a path that is not an existing directory, **When** sent, **Then** the agent replies that a valid project path is required and the active session is unchanged.
+4. **Given** an active session, **When** `/title <name>` is sent, **Then** the current session's title is updated and the change is visible in a later `/sessions`.
+5. **Given** an active session, **When** `/title` is sent with no name, **Then** the agent replies with the current title, or the session id when the session is untitled.
 
 ---
 
@@ -103,8 +108,8 @@ The user sends `/compact` (alias `/compress`) to reduce the active context when 
 
 - **FR-001**: The system MUST let an authorized user list the available coding sessions across all accessible projects from WhatsApp, grouped by project.
 - **FR-002**: The system MUST let the user switch the active session, identified by the number shown in the list or by session id, including sessions belonging to a different project; after such a switch the agent MUST operate in that session's project directory.
-- **FR-003**: The system MUST let the user start a new empty session, optionally providing its title in the same message.
-- **FR-004**: The system MUST let the user rename (title) the active session.
+- **FR-003**: The system MUST let the user start a new empty session in a specified project directory, optionally providing its title in the same message.
+- **FR-004**: The system MUST let the user rename (title) the active session, and MUST report the current title — or the session id when untitled — when the command is sent with no name.
 - **FR-005**: The system MUST let the user branch the active session into a new session from an earlier point.
 - **FR-006**: The system MUST let the user undo the last exchange in the active session.
 - **FR-007**: The system MUST let the user compact (compress) the active session's context.
@@ -119,6 +124,7 @@ The user sends `/compact` (alias `/compress`) to reduce the active context when 
 - **FR-016**: The system MUST bound the size of any single reply it sends to WhatsApp, splitting long output across multiple messages rather than silently truncating.
 - **FR-017**: The system MUST let the user interrupt the current in-progress turn from WhatsApp via `/abort` (alias `/stop`); an abort MUST discard any commands deferred under FR-012.
 - **FR-018**: When the user switches sessions via `/resume`, the outcome message MUST include a short factual recap of the target session: its project, title (or fallback label), age/message count, and the last user/assistant exchange.
+- **FR-019**: When the active session has no title, the system MUST generate a short title from its first non-command message using the active model, and MUST NOT overwrite a title the user set explicitly (`/new <path> <title>` or `/title <name>`).
 
 ### Key Entities *(include if feature involves data)*
 

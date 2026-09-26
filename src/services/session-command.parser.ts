@@ -23,8 +23,8 @@ export const COMMAND_ALIASES: Readonly<Record<string, CommandKind>> = {
 export const HELP_ENTRIES: ReadonlyArray<{ command: string; description: string }> = [
     { command: '/sessions', description: 'List sessions across all projects (grouped by project)' },
     { command: '/resume <n|id>', description: 'Switch to a session (moves the working directory to its project)' },
-    { command: '/new [title]', description: 'Start a new session, optionally named' },
-    { command: '/title <name>', description: 'Rename the active session' },
+    { command: '/new <path> [title]', description: 'Start a new session in a project directory (use . for the current project), optionally named' },
+    { command: '/title [name]', description: 'Show or set the active session title' },
     { command: '/branch [n]', description: 'Fork the active session from an earlier point' },
     { command: '/undo', description: 'Rewind past the last exchange' },
     { command: '/compact [instructions]', description: 'Compact the active context (alias: /compress)' },

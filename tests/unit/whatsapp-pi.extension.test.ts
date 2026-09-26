@@ -110,6 +110,8 @@ interface MockPi {
     appendEntry: ReturnType<typeof vi.fn>;
     exec: ReturnType<typeof vi.fn>;
     sendUserMessage: ReturnType<typeof vi.fn>;
+    getSessionName: ReturnType<typeof vi.fn>;
+    setSessionName: ReturnType<typeof vi.fn>;
 }
 
 const createMockPi = (): MockPi => {
@@ -130,7 +132,9 @@ const createMockPi = (): MockPi => {
         getFlag: vi.fn().mockReturnValue(false),
         appendEntry: vi.fn(),
         exec: vi.fn().mockResolvedValue({ code: 0 }),
-        sendUserMessage: vi.fn()
+        sendUserMessage: vi.fn(),
+        getSessionName: vi.fn().mockReturnValue(undefined),
+        setSessionName: vi.fn()
     };
 };
 
@@ -141,7 +145,15 @@ const createMockContext = () => ({
     },
     sessionManager: {
         getEntries: vi.fn().mockReturnValue([]),
-        getSessionFile: vi.fn().mockReturnValue(undefined)
+        getSessionFile: vi.fn().mockReturnValue(undefined),
+        getSessionId: vi.fn().mockReturnValue('session-1')
+    },
+    model: { id: 'test-model' },
+    modelRegistry: {
+        complete: vi.fn().mockResolvedValue({
+            stopReason: 'stop',
+            content: [{ type: 'text', text: 'generated session title' }]
+        })
     },
     compact: vi.fn(),
     abort: vi.fn()
@@ -353,6 +365,50 @@ describe('whatsapp-pi extension', () => {
             'Message from Ana (5511999998888): hello from whatsapp',
             { deliverAs: 'followUp' }
         );
+    });
+
+    it('titles an unnamed session with a model-generated title', async () => {
+        const registerExtension = await loadExtension();
+        const pi = createMockPi();
+        const ctx = createMockContext();
+        pi.getSessionName.mockReturnValue(undefined);
+
+        registerExtension(pi as any);
+        await pi.handlers.get('session_start')!({ reason: 'manual' }, ctx);
+        const messageCallback = mocks.whatsappService.setMessageCallback.mock.calls[0][0];
+
+        await messageCallback({
+            messages: [{
+                key: { id: 'WA1', remoteJid: '5511999998888@s.whatsapp.net', fromMe: false },
+                pushName: 'Ana',
+                message: { conversation: 'hello' }
+            }]
+        });
+
+        await vi.waitFor(() => expect(pi.setSessionName).toHaveBeenCalledWith('generated session title'));
+        expect(ctx.modelRegistry.complete).toHaveBeenCalled();
+    });
+
+    it('does not overwrite an existing session title', async () => {
+        const registerExtension = await loadExtension();
+        const pi = createMockPi();
+        const ctx = createMockContext();
+        pi.getSessionName.mockReturnValue('existing-title');
+
+        registerExtension(pi as any);
+        await pi.handlers.get('session_start')!({ reason: 'manual' }, ctx);
+        const messageCallback = mocks.whatsappService.setMessageCallback.mock.calls[0][0];
+
+        await messageCallback({
+            messages: [{
+                key: { id: 'WA1', remoteJid: '5511999998888@s.whatsapp.net', fromMe: false },
+                pushName: 'Ana',
+                message: { conversation: 'hello' }
+            }]
+        });
+
+        expect(pi.setSessionName).not.toHaveBeenCalled();
+        expect(ctx.modelRegistry.complete).not.toHaveBeenCalled();
     });
 
     it('dispatches /compact commands received from WhatsApp through the session router', async () => {

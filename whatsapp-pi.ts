@@ -144,13 +144,9 @@ export default function (pi: ExtensionAPI) {
             });
         }
 
-        // A session switch recreates the runtime but must not re-run one-time setup
-        // or tear down the WhatsApp connection (FR-013 / research R6).
-        if (event.reason === 'new' || event.reason === 'resume' || event.reason === 'fork') {
-            logger.log(`[WhatsApp-Pi] Session replacement (${event.reason}); WhatsApp stays connected.`);
-            refreshFooterStatus();
-            return;
-        }
+        // A session switch recreates the extension runtime, so the previous
+        // runtime's `pi`/ctx becomes stale. The previous runtime stops its socket
+        // in session_shutdown; this runtime re-runs setup and reconnects below.
 
         // Set up group binding if configured
         const boundGroupJid = (pi.getFlag("whatsapp-group") as string) || "";
@@ -622,11 +618,10 @@ export default function (pi: ExtensionAPI) {
     });
 
     pi.on("session_shutdown", async (event) => {
-        if (event.reason !== 'quit') {
-            logger.log(`[WhatsApp-Pi] Session replacement (${event.reason}); keeping WhatsApp connected.`);
-            return;
-        }
-        logger.log("[WhatsApp-Pi] Session shutdown detected. Stopping WhatsApp service...");
+        // The extension runtime is replaced on session switch/reload, which makes
+        // the captured `pi`/ctx stale. Stop the socket so the next runtime owns a
+        // fresh connection instead of invoking a dead callback.
+        logger.log(`[WhatsApp-Pi] Session shutdown (${event.reason}); stopping WhatsApp service...`);
         await whatsappService.stop();
     });
 }

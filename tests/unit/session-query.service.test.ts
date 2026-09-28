@@ -69,4 +69,19 @@ describe('SessionQueryService', () => {
         expect((await query.findById('a2'))?.filePath).toBe('/projects/alpha/a2.jsonl');
         expect(await query.findById('missing')).toBeUndefined();
     });
+
+    it('resolves a session by display name (case-insensitive)', async () => {
+        expect((await query.findByReference('ALPHA-WORK'))?.sessionId).toBe('a1');
+        expect((await query.findByReference('alpha-work'))?.filePath).toBe('/projects/alpha/a1.jsonl');
+    });
+
+    it('resolves a session by first-message title', async () => {
+        expect((await query.findByReference('beta task'))?.sessionId).toBe('b1');
+    });
+
+    it('resolves a session by id or path and returns undefined for unknown references', async () => {
+        expect((await query.findByReference('a2'))?.sessionId).toBe('a2');
+        expect((await query.findByReference('/projects/beta/b1.jsonl'))?.sessionId).toBe('b1');
+        expect(await query.findByReference('nope')).toBeUndefined();
+    });
 });

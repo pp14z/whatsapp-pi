@@ -22,7 +22,7 @@ export const COMMAND_ALIASES: Readonly<Record<string, CommandKind>> = {
 /** Commands shown by `/help`, in a stable order. */
 export const HELP_ENTRIES: ReadonlyArray<{ command: string; description: string }> = [
     { command: '/sessions', description: 'List sessions across all projects (grouped by project)' },
-    { command: '/resume <n|id>', description: 'Switch to a session (moves the working directory to its project)' },
+    { command: '/resume <n|id|name>', description: 'Switch to a session by list number, id, or name (moves the working directory to its project)' },
     { command: '/new <path> [title]', description: 'Start a new session in a project directory (use . for the current project), optionally named' },
     { command: '/title [name]', description: 'Show or set the active session title' },
     { command: '/branch [n]', description: 'Fork the active session from an earlier point' },

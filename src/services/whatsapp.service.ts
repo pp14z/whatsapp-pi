@@ -301,7 +301,7 @@ export class WhatsAppService {
         try {
             return await lidMapping.getPNForLID(lidJid) ?? undefined;
         } catch (error) {
-            fileLog(`[handleIncomingMessages] Failed to resolve LID ${lidJid} to a phone number: ${error instanceof Error ? error.message : String(error)}`);
+            fileLog(`[resolvePhoneJidForLid] Failed to resolve LID ${lidJid} to a phone number: ${error instanceof Error ? error.message : String(error)}`);
             return undefined;
         }
     }
@@ -312,17 +312,33 @@ export class WhatsAppService {
         return `${digits}@s.whatsapp.net`;
     }
 
-    public resolveOutboundRecipientJid(recipient: string): string {
+    /**
+     * Resolves the outbound JID for a recipient.
+     *
+     * The allow list is phone-number based, but WhatsApp addresses one-to-one
+     * chats by LID. A LID can therefore arrive here either as `<lid>@lid` or,
+     * wrongly, as `<lid>@s.whatsapp.net`. The second form treats the LID as a
+     * phone number and silently sends to a chat that does not exist, so any
+     * LID local part is mapped back to its phone-number JID before sending,
+     * independently of whether the allow-list entry carries a send number.
+     */
+    public async resolveOutboundRecipientJid(recipient: string): Promise<string> {
         if (SessionManager.isGroupJid(recipient)) {
             return recipient;
         }
 
-        const senderNumber = this.normalizeContactNumber(recipient.split('@')[0]);
+        const localPart = recipient.split('@')[0].split(':')[0];
+        const senderNumber = this.normalizeContactNumber(localPart);
         const allowedContact = this.sessionManager.getAllowedContact(recipient)
             ?? this.sessionManager.getAllowedContact(senderNumber);
 
         if (allowedContact?.sendNumber) {
             return this.normalizeRecipientJid(allowedContact.sendNumber);
+        }
+
+        const phoneJid = await this.lookupPhoneJidForLid(`${localPart}@lid`);
+        if (phoneJid) {
+            return this.normalizeRecipientJid(this.toContactNumberFromJid(phoneJid));
         }
 
         return this.normalizeRecipientJid(recipient);
@@ -909,7 +925,7 @@ export class WhatsAppService {
     }
 
     async sendMessage(jid: string, text: string) {
-        const recipientJid = this.resolveOutboundRecipientJid(jid);
+        const recipientJid = await this.resolveOutboundRecipientJid(jid);
 
         // Ensure we show the typing indicator before sending
         await this.sendPresence(recipientJid, 'composing');
@@ -930,7 +946,7 @@ export class WhatsAppService {
     }
 
     async sendMenuMessage(jid: string, text: string) {
-        const normalizedJid = this.resolveOutboundRecipientJid(jid);
+        const normalizedJid = await this.resolveOutboundRecipientJid(jid);
         const socket = this.getActiveSocket();
 
         if (!socket) {

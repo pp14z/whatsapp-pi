@@ -83,7 +83,7 @@ export async function showMessageReplyView(
                 targetMessageId: props.selectedMessage.messageId,
                 targetConversation: props.selectedMessage.senderNumber
             };
-            const recipientJid = props.whatsappService.resolveOutboundRecipientJid(
+            const recipientJid = await props.whatsappService.resolveOutboundRecipientJid(
                 props.selectedMessage.senderNumber
             );
 

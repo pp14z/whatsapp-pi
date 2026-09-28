@@ -370,7 +370,7 @@ export default function (pi: ExtensionAPI) {
 
             const message = params.message ?? '';
 
-            const outboundJid = whatsappService.resolveOutboundRecipientJid(resolvedJid);
+            const outboundJid = await whatsappService.resolveOutboundRecipientJid(resolvedJid);
             const result = await whatsappService.sendMessage(outboundJid, message);
 
             if (result.success) {
@@ -572,7 +572,7 @@ export default function (pi: ExtensionAPI) {
         if (sessionManager.getStatus() !== 'connected') return;
         const lastJid = whatsappService.getLastRemoteJid();
         if (lastJid) {
-            await whatsappService.sendPresence(whatsappService.resolveOutboundRecipientJid(lastJid), 'composing');
+            await whatsappService.sendPresence(await whatsappService.resolveOutboundRecipientJid(lastJid), 'composing');
         }
     });
 
@@ -585,7 +585,7 @@ export default function (pi: ExtensionAPI) {
             const lastJid = whatsappService.getLastRemoteJid();
             const text = message.content.filter(c => c.type === "text").map(c => c.text).join("\n");
             const outboundJid = lastJid
-                ? whatsappService.resolveOutboundRecipientJid(lastJid)
+                ? await whatsappService.resolveOutboundRecipientJid(lastJid)
                 : null;
 
             // Skip if send_wa_message tool already sent a reply to this JID

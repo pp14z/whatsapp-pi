@@ -142,18 +142,35 @@ describe('WhatsAppService Filtering', () => {
         await sessionManager.addNumber('+1234567890');
         await sessionManager.setContactSendNumber('+1234567890', '+5511999998888');
 
-        expect(whatsappService.resolveOutboundRecipientJid('1234567890@s.whatsapp.net')).toBe('5511999998888@s.whatsapp.net');
+        await expect(whatsappService.resolveOutboundRecipientJid('1234567890@s.whatsapp.net')).resolves.toBe('5511999998888@s.whatsapp.net');
     });
 
     it('should resolve an allowed contact LID to its configured send phone number for outbound replies', async () => {
         await sessionManager.addNumber('1234567890@lid');
         await sessionManager.setContactSendNumber('1234567890@lid', '+5511999998888');
 
-        expect(whatsappService.resolveOutboundRecipientJid('1234567890@lid')).toBe('5511999998888@s.whatsapp.net');
+        await expect(whatsappService.resolveOutboundRecipientJid('1234567890@lid')).resolves.toBe('5511999998888@s.whatsapp.net');
     });
 
-    it('should keep group reply targets as group JIDs', () => {
-        expect(whatsappService.resolveOutboundRecipientJid('120363012345@g.us')).toBe('120363012345@g.us');
+    it('should map a LID used as a phone-number JID back to the phone-number JID without a send number', async () => {
+        await sessionManager.addNumber('+1234567890');
+        const getPNForLID = vi.fn().mockResolvedValue('5511999998888:0@s.whatsapp.net');
+        (whatsappService as any).socket = { signalRepository: { lidMapping: { getPNForLID } } };
+
+        await expect(whatsappService.resolveOutboundRecipientJid('1234567890@s.whatsapp.net')).resolves.toBe('5511999998888@s.whatsapp.net');
+        expect(getPNForLID).toHaveBeenCalledWith('1234567890@lid');
+    });
+
+    it('should map a LID JID back to the phone-number JID without a send number', async () => {
+        await sessionManager.addNumber('+1234567890');
+        const getPNForLID = vi.fn().mockResolvedValue('5511999998888:0@s.whatsapp.net');
+        (whatsappService as any).socket = { signalRepository: { lidMapping: { getPNForLID } } };
+
+        await expect(whatsappService.resolveOutboundRecipientJid('1234567890@lid')).resolves.toBe('5511999998888@s.whatsapp.net');
+    });
+
+    it('should keep group reply targets as group JIDs', async () => {
+        await expect(whatsappService.resolveOutboundRecipientJid('120363012345@g.us')).resolves.toBe('120363012345@g.us');
     });
 
     it('should accept messages sent by me fromMe without pi symbol "π" at last letter', () => {

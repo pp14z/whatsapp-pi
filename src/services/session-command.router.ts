@@ -377,10 +377,13 @@ export class SessionCommandRouter {
         if (/^\d+$/.test(target)) {
             return this.lastOrdered[Number(target) - 1];
         }
+        const needle = target.toLowerCase();
         const cached = this.lastOrdered.find(
-            (session) => session.sessionId === target || session.filePath === target
+            (session) => session.sessionId === target
+                || session.filePath === target
+                || (session.name !== undefined && session.name.toLowerCase() === needle)
         );
-        return cached ?? this.deps.query.findById(target);
+        return cached ?? this.deps.query.findByReference(target);
     }
 
     private buildRecap(sm: SessionManagerView, summary: SessionSummary): string {

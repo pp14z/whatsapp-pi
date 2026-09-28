@@ -221,4 +221,18 @@ describe('SessionCommandRouter', () => {
         expect(writes).toHaveLength(1);
         expect(sent[0].text).toContain('target-session');
     });
+
+    it('resumes a session by display name', async () => {
+        const { router, sent, writes } = makeRouter({ sessions: [info({ id: 'target', name: 'whatsapp-pi' })] });
+        await router.executeInternal('resume jid whatsapp-pi', fakeContext() as never);
+        expect(writes).toHaveLength(1);
+        expect(sent[0].text).toContain('whatsapp-pi');
+    });
+
+    it('reports an unknown session when the reference matches nothing', async () => {
+        const { router, sent, writes } = makeRouter({ sessions: [info({ id: 'target', name: 'target-session' })] });
+        await router.executeInternal('resume jid missing-name', fakeContext() as never);
+        expect(writes).toHaveLength(0);
+        expect(sent[0].text).toContain('Unknown session');
+    });
 });

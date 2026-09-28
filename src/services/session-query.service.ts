@@ -74,6 +74,37 @@ export class SessionQueryService {
         return found ? toSummary(found) : undefined;
     }
 
+    /**
+     * Resolves a session from a user-supplied reference: an id, a file path, a
+     * display name, or a title shown in `/sessions`. Name matches are
+     * case-insensitive, and an ambiguous name resolves to the most recent
+     * session. Falls back to a partial name match.
+     */
+    async findByReference(reference: string): Promise<SessionSummary | undefined> {
+        const ref = reference.trim();
+        if (!ref) {
+            return undefined;
+        }
+
+        const infos = await this.listAll();
+        const byIdOrPath = infos.find((info) => info.id === ref || info.path === ref);
+        if (byIdOrPath) {
+            return toSummary(byIdOrPath);
+        }
+
+        const needle = ref.toLowerCase();
+        const newestFirst = [...infos].sort((a, b) => b.modified.getTime() - a.modified.getTime());
+        const byExactTitle = newestFirst.find(
+            (info) => info.name?.toLowerCase() === needle || info.firstMessage.toLowerCase() === needle
+        );
+        if (byExactTitle) {
+            return toSummary(byExactTitle);
+        }
+
+        const byPartialName = newestFirst.find((info) => info.name?.toLowerCase().includes(needle));
+        return byPartialName ? toSummary(byPartialName) : undefined;
+    }
+
     formatListing(listing: SessionListing): string {
         const flat = listing.groups.flatMap((group) => group.sessions);
         if (flat.length === 0) {

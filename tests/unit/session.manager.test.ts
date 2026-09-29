@@ -67,6 +67,18 @@ describe('SessionManager', () => {
         expect(await sessionManager.isRegistered()).toBe(true);
     });
 
+    it('should restore a truncated creds.json from its backup', async () => {
+        const authDir = sessionManager.getAuthStateDir();
+        await mkdir(authDir, { recursive: true });
+        await writeFile(join(authDir, 'creds.json'), '');
+        await writeFile(join(authDir, 'creds.json.bak'), JSON.stringify({ me: { id: 'backup@s.whatsapp.net' } }));
+
+        await sessionManager.getAuthState();
+
+        const restored = await readFile(join(authDir, 'creds.json'), 'utf-8');
+        expect(restored).toContain('backup@s.whatsapp.net');
+    });
+
     it('should recover and rewrite a config file with trailing data', async () => {
         const configPath = join(dataDir, 'config.json');
         await writeFile(configPath, [

@@ -434,7 +434,51 @@ export class SessionManager {
 
     async getAuthState() {
         await this.ensureStorageDirectories();
-        return await useMultiFileAuthState(this.authStateDir);
+        await this.recoverCredentialsFromBackup();
+        const { state, saveCreds } = await useMultiFileAuthState(this.authStateDir);
+        return {
+            state,
+            saveCreds: async () => {
+                await saveCreds();
+                await this.backupCredentials();
+            }
+        };
+    }
+
+    /** Baileys writes creds.json non-atomically; keep a last-known-good copy. */
+    private async backupCredentials(): Promise<void> {
+        const credsPath = join(this.authStateDir, 'creds.json');
+        try {
+            const data = await readFile(credsPath);
+            if (data.length > 0) {
+                await writeFile(`${credsPath}.bak`, data);
+            }
+        } catch {
+            // Best-effort backup.
+        }
+    }
+
+    /** Restores creds.json from the backup when the live file is missing or truncated. */
+    private async recoverCredentialsFromBackup(): Promise<void> {
+        const credsPath = join(this.authStateDir, 'creds.json');
+        try {
+            const current = await readFile(credsPath);
+            if (current.length > 0) {
+                return;
+            }
+        } catch {
+            // Missing file: fall through to the backup.
+        }
+
+        try {
+            const backup = await readFile(`${credsPath}.bak`);
+            if (backup.length > 0) {
+                await writeFile(credsPath, backup);
+                console.warn('[WhatsApp-Pi] Restored WhatsApp credentials from backup.');
+            }
+        } catch {
+            // No usable backup.
+        }
     }
 
     private async syncAuthStateFromDisk() {

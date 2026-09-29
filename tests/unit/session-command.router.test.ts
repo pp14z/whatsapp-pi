@@ -22,6 +22,7 @@ function makeRouter(options: { sessions?: SessionInfo[] } = {}) {
     const sent: Array<{ jid: string; text: string }> = [];
     const dispatched: string[] = [];
     const writes: unknown[] = [];
+    const pending: Array<{ chatJid: string; text: string }> = [];
     const setSessionName = vi.fn();
 
     const deps = {
@@ -33,7 +34,12 @@ function makeRouter(options: { sessions?: SessionInfo[] } = {}) {
             },
             read: async () => undefined,
             clear: async () => {},
-            getPointerPath: () => ''
+            getPointerPath: () => '',
+            writePendingReply: async (reply: { chatJid: string; text: string }) => {
+                pending.push(reply);
+            },
+            readPendingReply: async () => undefined,
+            clearPendingReply: async () => {}
         },
         sendMessage: async (jid: string, text: string) => {
             sent.push({ jid, text });
@@ -56,7 +62,7 @@ function makeRouter(options: { sessions?: SessionInfo[] } = {}) {
     };
 
     const router = new SessionCommandRouter(deps as never);
-    return { router, sent, dispatched, writes, setSessionName };
+    return { router, sent, dispatched, writes, pending, setSessionName };
 }
 
 function fakeContext(options: { sessionName?: string; cwd?: string } = {}) {
@@ -185,20 +191,22 @@ describe('SessionCommandRouter', () => {
         expect(sent[0].text).toContain('s');
     });
 
-    it('starts a new session in the given project and persists the pointer', async () => {
-        const { router, sent, writes } = makeRouter();
+    it('starts a new session in the given project and defers the reply to the new runtime', async () => {
+        const { router, sent, writes, pending } = makeRouter();
         const ctx = fakeContext();
-        await router.executeInternal('new jid .', ctx as never);        expect(writes).toHaveLength(1);
+        await router.executeInternal('new jid .', ctx as never);
+        expect(writes).toHaveLength(1);
         expect(ctx.switches).toEqual(['/projects/alpha/new-session.jsonl']);
-        expect(sent[0].text).toContain('New session started in /projects/alpha');
+        expect(sent).toHaveLength(0);
+        expect(pending[0].text).toContain('New session started in /projects/alpha');
     });
 
     it('creates a titled session in the given project', async () => {
-        const { router, sent, setSessionName } = makeRouter();
+        const { router, pending, setSessionName } = makeRouter();
         const ctx = fakeContext();
         await router.executeInternal('new jid . my task', ctx as never);
         expect(setSessionName).toHaveBeenCalledWith('my task');
-        expect(sent[0].text).toContain("as 'my task'");
+        expect(pending[0].text).toContain("as 'my task'");
     });
 
     it('requires a project path for /new', async () => {
@@ -215,18 +223,19 @@ describe('SessionCommandRouter', () => {
         expect(sent[0].text).toContain('not found');
     });
 
-    it('resumes a session by id and persists the pointer', async () => {
-        const { router, sent, writes } = makeRouter({ sessions: [info({ id: 'target', name: 'target-session' })] });
+    it('resumes a session by id and defers the reply to the new runtime', async () => {
+        const { router, sent, writes, pending } = makeRouter({ sessions: [info({ id: 'target', name: 'target-session' })] });
         await router.executeInternal('resume jid target', fakeContext() as never);
         expect(writes).toHaveLength(1);
-        expect(sent[0].text).toContain('target-session');
+        expect(sent).toHaveLength(0);
+        expect(pending[0].text).toContain('target-session');
     });
 
     it('resumes a session by display name', async () => {
-        const { router, sent, writes } = makeRouter({ sessions: [info({ id: 'target', name: 'whatsapp-pi' })] });
+        const { router, pending, writes } = makeRouter({ sessions: [info({ id: 'target', name: 'whatsapp-pi' })] });
         await router.executeInternal('resume jid whatsapp-pi', fakeContext() as never);
         expect(writes).toHaveLength(1);
-        expect(sent[0].text).toContain('whatsapp-pi');
+        expect(pending[0].text).toContain('whatsapp-pi');
     });
 
     it('reports an unknown session when the reference matches nothing', async () => {

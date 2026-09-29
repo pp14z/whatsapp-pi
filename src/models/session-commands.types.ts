@@ -88,5 +88,14 @@ export const SESSION_LIST_LIMIT = 20;
 /** File name of the persisted active-session pointer inside the extension data dir. */
 export const ACTIVE_SESSION_FILE = 'active-session.json';
 
+/** Reply produced by a session-switching command, flushed by the replacement runtime. */
+export const PENDING_REPLY_FILE = 'pending-reply.json';
+
+export interface PendingSessionReply {
+    chatJid: string;
+    text: string;
+    createdAt: string;
+}
+
 /** Dedupe window for inbound WhatsApp message ids. */
 export const DEDUPE_LIMIT = 500;

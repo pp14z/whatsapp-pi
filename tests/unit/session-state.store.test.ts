@@ -49,4 +49,17 @@ describe('SessionStateStore', () => {
         await store.clear();
         expect(await store.read()).toBeUndefined();
     });
+
+    it('round-trips a pending session-switch reply', async () => {
+        const reply = { chatJid: '4514027413710@lid', text: 'Resumed', createdAt: '2026-09-29T15:00:00.000Z' };
+        await store.writePendingReply(reply);
+        expect(await store.readPendingReply()).toEqual(reply);
+        await store.clearPendingReply();
+        expect(await store.readPendingReply()).toBeUndefined();
+    });
+
+    it('treats a malformed pending reply as absent', async () => {
+        await writeFile(store.getPendingReplyPath(), JSON.stringify({ chatJid: 'x' }));
+        expect(await store.readPendingReply()).toBeUndefined();
+    });
 });

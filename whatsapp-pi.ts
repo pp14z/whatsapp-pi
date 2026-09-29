@@ -94,6 +94,24 @@ export default function (pi: ExtensionAPI) {
             : t("service.whatsapp.disconnected")));
     };
 
+    // Delivers a reply that a session-switching command persisted because the
+    // runtime that owned the socket was torn down mid-command.
+    const flushPendingReply = async () => {
+        const pending = await sessionStateStore.readPendingReply();
+        if (!pending) return;
+        if (whatsappService.getStatus() !== 'connected') return;
+
+        try {
+            const result = await whatsappService.sendMessage(pending.chatJid, pending.text);
+            if (result.success) {
+                await sessionStateStore.clearPendingReply();
+                logger.log('[WhatsApp-Pi] Delivered deferred session-switch reply.');
+            }
+        } catch (error) {
+            logger.log(`[WhatsApp-Pi] Failed to deliver deferred session-switch reply: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    };
+
     const installGracefulShutdownHandlers = () => {
         shutdownState.__whatsappPiShutdown ??= { installed: false };
         if (shutdownState.__whatsappPiShutdown.installed) {
@@ -237,6 +255,7 @@ export default function (pi: ExtensionAPI) {
             };
 
             await tryConnect();
+            await flushPendingReply();
         } else if (isWhatsappPiOn) {
             ctx.ui.notify('WhatsApp: Auto-connect requested, but no saved WhatsApp credentials were found. Use Connect WhatsApp once to scan the QR code.', 'warning');
         } else {

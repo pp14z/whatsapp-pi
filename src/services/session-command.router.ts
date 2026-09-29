@@ -191,7 +191,18 @@ export class SessionCommandRouter {
         try {
             const result = await this.runWithContext(command, rest, ctx);
             if (chatJid) {
-                await this.deps.sendMessage(chatJid, result.message);
+                if (result.changedActiveSession) {
+                    // Switching sessions replaces the runtime that owns the WhatsApp
+                    // socket, so sending now would race the teardown. Persist the
+                    // reply and let the replacement runtime flush it after reconnect.
+                    await this.deps.store.writePendingReply({
+                        chatJid,
+                        text: result.message,
+                        createdAt: new Date().toISOString()
+                    });
+                } else {
+                    await this.deps.sendMessage(chatJid, result.message);
+                }
             }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);

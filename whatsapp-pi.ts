@@ -120,16 +120,28 @@ export default function (pi: ExtensionAPI) {
 
         shutdownState.__whatsappPiShutdown.installed = true;
         
-        const shutdown = async (reason: string) => {
+        let shuttingDown = false;
+        const shutdown = async (reason: string, exit: boolean) => {
+            if (shuttingDown) {
+                return;
+            }
+            shuttingDown = true;
             try {
                 await shutdownState.__whatsappPiShutdown?.stop?.();
             } catch (error) {
                 logger.error(`[WhatsApp-Pi] Graceful shutdown failed during ${reason}:`, error);
+            } finally {
+                if (exit) {
+                    process.exit(0);
+                }
             }
         };
 
-        process.once('SIGINT', () => { void shutdown('SIGINT'); });
-        process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
+        process.once('SIGINT', () => { void shutdown('SIGINT', false); });
+        process.once('SIGTERM', () => { void shutdown('SIGTERM', true); });
+        // `tmux kill-session` (ExecStop) delivers SIGHUP; without a handler the
+        // process dies mid-write and can truncate creds.json.
+        process.once('SIGHUP', () => { void shutdown('SIGHUP', true); });
     };
 
     // Initial status setup

@@ -15,6 +15,7 @@ import { SessionQueryService } from './src/services/session-query.service.js';
 import { SessionTitleService } from './src/services/session-title.service.js';
 import { SessionStateStore } from './src/services/session-state.store.js';
 import { initI18n, t } from './src/i18n.js';
+import * as qrcode from 'qrcode-terminal';
 
 const shutdownState = globalThis as typeof globalThis & {
     __whatsappPiShutdown?: {
@@ -47,6 +48,12 @@ export default function (pi: ExtensionAPI) {
 
     const sessionManager = new SessionManager();
     const whatsappService = new WhatsAppService(sessionManager);
+    // Headless installs never open the /whatsapp menu, so surface pairing QRs on
+    // the console (visible in the tmux pane) as soon as they are generated.
+    whatsappService.setQRCodeCallback((qr) => {
+        console.log('Scan this QR with WhatsApp -> Linked devices -> Link a device:');
+        qrcode.generate(qr, { small: true });
+    });
     const recentsService = new RecentsService(sessionManager);
     whatsappService.setRecentsService(recentsService);
     const logger = new WhatsAppPiLogger(false);

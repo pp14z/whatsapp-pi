@@ -47,6 +47,22 @@ describe('SessionQueryService', () => {
         expect(text).toContain('beta task');
     });
 
+    it('shows the session id and, for named sessions, the opening message', async () => {
+        const { listing } = await query.list();
+        const text = query.formatListing(listing);
+
+        expect(text).toContain('alpha-work · a1');
+        expect(text).toContain('↳ hello');
+    });
+
+    it('resolves a session by a short id prefix', async () => {
+        const longId = '01a0ea21-6eee-778f-af38-7f5c821fae16';
+        const withLongId = new SessionQueryService(async () => [info({ id: longId, path: '/p/long.jsonl' })]);
+
+        expect((await withLongId.findByReference('01a0ea21'))?.sessionId).toBe(longId);
+        expect(await withLongId.findByReference('ffffffff')).toBeUndefined();
+    });
+
     it('reports an empty listing', async () => {
         const empty = new SessionQueryService(async () => []);
         const { listing } = await empty.list();

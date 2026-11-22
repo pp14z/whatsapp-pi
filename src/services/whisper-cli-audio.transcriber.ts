@@ -1,22 +1,42 @@
-import { dirname, join, resolve } from 'node:path';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { createWriteStream, existsSync } from 'node:fs';
 import { mkdir, stat, unlink } from 'node:fs/promises';
 import https from 'node:https';
 import { createStoragePaths } from './storage-path.js';
+import { getWhisperLanguage } from './whisper-language.js';
 import type { WhatsAppPiLogger } from './whatsapp-pi.logger.js';
 import type { AudioTranscriber } from './audio-transcriber.js';
 
 const execFileAsync = promisify(execFile);
 const MODEL_FILENAME = 'ggml-base.bin';
 const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin';
+// Resolve the project root from this module rather than from process.cwd(), so
+// the bundled CLI is found even when Pi is launched from another directory.
+const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 type AudioLogger = Pick<WhatsAppPiLogger, 'log' | 'error'>;
 
-function getCliPath() {
+function findOnPath(name: string): string | null {
+    for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+        if (!dir) { continue; }
+        const candidate = join(dir, name);
+        if (existsSync(candidate)) { return candidate; }
+    }
+    return null;
+}
+
+function getCliPath(): string | null {
     const name = process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
-    return [process.env.WHISPER_CLI_PATH, resolve(process.cwd(), `vendor/whisper.cpp/build/bin/${name}`), resolve(process.cwd(), `vendor/whisper.cpp/build/bin/Release/${name}`), '/home/rapha/Repos/whisper.cpp/build/bin/whisper-cli']
-        .filter((path): path is string => Boolean(path)).find(existsSync) ?? null;
+    const candidates = [
+        process.env.WHISPER_CLI_PATH,
+        resolve(PROJECT_ROOT, `vendor/whisper.cpp/build/bin/${name}`),
+        resolve(PROJECT_ROOT, `vendor/whisper.cpp/build/bin/Release/${name}`),
+        resolve(process.cwd(), `vendor/whisper.cpp/build/bin/${name}`),
+        resolve(process.cwd(), `vendor/whisper.cpp/build/bin/Release/${name}`),
+    ];
+    return candidates.filter((path): path is string => Boolean(path)).find(existsSync) ?? findOnPath(name);
 }
 function modelPath() { return join(createStoragePaths().root, 'whisper', 'models', MODEL_FILENAME); }
 async function download(url: string, target: string): Promise<void> {
@@ -45,7 +65,8 @@ export function tryCreateWhisperCliAudioTranscriber(logger: AudioLogger): AudioT
     const libPath = dirname(cli);
     const env = { ...process.env, LD_LIBRARY_PATH: libPath + (process.env.LD_LIBRARY_PATH ? `:${process.env.LD_LIBRARY_PATH}` : '') };
     return { async transcribe(inputPath) {
-        const { stdout } = await execFileAsync(cli, ['--model', await ensureModel(logger), '--file', inputPath, '--language', 'pt', '--no-timestamps', '--no-prints'], { windowsHide: true, env });
+        const language = getWhisperLanguage();
+        const { stdout } = await execFileAsync(cli, ['--model', await ensureModel(logger), '--file', inputPath, '--language', language, '--no-timestamps', '--no-prints'], { windowsHide: true, env });
         return stdout.trim();
     } };
 }

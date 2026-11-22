@@ -4,6 +4,7 @@ import { createWriteStream } from 'node:fs';
 import { mkdir, stat, unlink } from 'node:fs/promises';
 import https from 'node:https';
 import { createStoragePaths } from './storage-path.js';
+import { getWhisperLanguage, isLanguageAutodetect } from './whisper-language.js';
 import type { WhatsAppPiLogger } from './whatsapp-pi.logger.js';
 import type { AudioTranscriber } from './audio-transcriber.js';
 
@@ -158,10 +159,10 @@ export function tryCreateWhisperNodeAudioTranscriber(logger: AudioLogger): Audio
             logger.log('[WhatsApp-Pi] Whisper.cpp transcribe');
             const result = await transcribeAsync(context, {
                 fname_inp: inputPath,
-                language: 'pt',
+                language: getWhisperLanguage(),
                 no_timestamps: true,
                 no_context: false,
-                detect_language: false
+                detect_language: isLanguageAutodetect()
             });
 
             return extractText(result);

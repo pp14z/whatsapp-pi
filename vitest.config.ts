@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 function resolveLocalJsImports() {
     return {
@@ -16,5 +16,11 @@ function resolveLocalJsImports() {
 }
 
 export default defineConfig({
-    plugins: [resolveLocalJsImports()]
+    plugins: [resolveLocalJsImports()],
+    test: {
+        // vendor/ holds the whisper.cpp checkout built by scripts/build-whisper-cli.sh.
+        // Its own spec files are not part of this project's suite, and collecting
+        // them fails on dev-only dependencies that are never installed here.
+        exclude: [...configDefaults.exclude, 'vendor/**']
+    }
 });

@@ -30,3 +30,5 @@ package-lock.json
 # Tesseract OCR (auto-downloaded by LiteParse)
 *.traineddata
 .pi/loops/
+# Whisper.cpp build output (scripts/build-whisper-cli.sh)
+vendor/

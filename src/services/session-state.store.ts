@@ -18,7 +18,10 @@ export class SessionStateStore {
     private readonly pendingReplyPath: string;
 
     constructor(root: string = getDefaultStorageRoot()) {
-        this.pointerPath = join(root, ACTIVE_SESSION_FILE);
+        // A dedicated process (e.g. the headless service) can keep its own resume
+        // pointer so it never shares a session file with interactive sessions.
+        const override = process.env.WHATSAPP_PI_STATE_FILE?.trim();
+        this.pointerPath = override ? override : join(root, ACTIVE_SESSION_FILE);
         this.pendingReplyPath = join(root, PENDING_REPLY_FILE);
     }
 

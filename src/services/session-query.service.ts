@@ -94,6 +94,15 @@ export class SessionQueryService {
 
         const needle = ref.toLowerCase();
         const newestFirst = [...infos].sort((a, b) => b.modified.getTime() - a.modified.getTime());
+
+        // The listing shows a short id prefix; accept it for /resume.
+        if (ref.length >= 4) {
+            const byIdPrefix = newestFirst.find((info) => info.id.startsWith(ref));
+            if (byIdPrefix) {
+                return toSummary(byIdPrefix);
+            }
+        }
+
         const byExactTitle = newestFirst.find(
             (info) => info.name?.toLowerCase() === needle || info.firstMessage.toLowerCase() === needle
         );
@@ -121,17 +130,24 @@ export class SessionQueryService {
                 const active = listing.activeFilePath && session.filePath === listing.activeFilePath
                     ? ` ${t('session.list.active')}`
                     : '';
-                const title = session.name || session.firstMessage || t('session.list.untitled');
+                const firstMessage = cleanFirstMessage(session.firstMessage);
+                const title = session.name || firstMessage || t('session.list.untitled');
                 const preview = truncate(title, 60);
                 lines.push(
                     t('session.list.item', {
                         n: ordinal,
                         title: preview,
+                        id: session.sessionId.split('-')[0],
                         age: formatAge(session.modified),
                         count: session.messageCount,
                         active
                     })
                 );
+                // When the session has a name, also show its opening message so the
+                // title is not mistaken for the first message.
+                if (session.name && firstMessage) {
+                    lines.push(t('session.list.firstMessage', { text: truncate(firstMessage, 80) }));
+                }
             }
         }
 
@@ -161,4 +177,9 @@ export class SessionQueryService {
 function truncate(value: string, max: number): string {
     const singleLine = value.replace(/\s+/g, ' ').trim();
     return singleLine.length > max ? `${singleLine.slice(0, max - 1)}…` : singleLine;
+}
+
+/** Strips the prefix the WhatsApp bridge adds to injected prompts. */
+function cleanFirstMessage(value: string): string {
+    return value.replace(/^Message from [^(]*\([^)]*\):\s*/i, '').trim();
 }

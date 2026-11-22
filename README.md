@@ -77,6 +77,12 @@ npm install
 
 The CLI is expected at `vendor/whisper.cpp/build/bin/whisper-cli` (or `.exe` on Windows). To use another location, set `WHISPER_CLI_PATH`.
 
+Transcription language is detected per clip by default. To pin it instead (useful on short or noisy notes), set `WHATSAPP_PI_WHISPER_LANGUAGE` to a Whisper language code such as `en` or `es`:
+
+```bash
+WHATSAPP_PI_WHISPER_LANGUAGE=en
+```
+
 PDF documents are parsed locally and do not require extra system utilities.
 If a PDF cannot be parsed automatically, it is still saved and forwarded with a clear fallback notice.
 

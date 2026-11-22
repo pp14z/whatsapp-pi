@@ -15,6 +15,7 @@ import { SessionQueryService } from './src/services/session-query.service.js';
 import { SessionTitleService } from './src/services/session-title.service.js';
 import { SessionStateStore } from './src/services/session-state.store.js';
 import { initI18n, t } from './src/i18n.js';
+import * as qrcode from 'qrcode-terminal';
 
 const shutdownState = globalThis as typeof globalThis & {
     __whatsappPiShutdown?: {
@@ -47,6 +48,12 @@ export default function (pi: ExtensionAPI) {
 
     const sessionManager = new SessionManager();
     const whatsappService = new WhatsAppService(sessionManager);
+    // Headless installs never open the /whatsapp menu, so surface pairing QRs on
+    // the console (visible in the tmux pane) as soon as they are generated.
+    whatsappService.setQRCodeCallback((qr) => {
+        console.log('Scan this QR with WhatsApp -> Linked devices -> Link a device:');
+        qrcode.generate(qr, { small: true });
+    });
     const recentsService = new RecentsService(sessionManager);
     whatsappService.setRecentsService(recentsService);
     const logger = new WhatsAppPiLogger(false);
@@ -96,10 +103,19 @@ export default function (pi: ExtensionAPI) {
 
     // Delivers a reply that a session-switching command persisted because the
     // runtime that owned the socket was torn down mid-command.
-    const flushPendingReply = async () => {
+    // Delivers a reply that a session-switching command persisted because the
+    // runtime that owned the socket was torn down mid-command. The reply file can
+    // appear slightly after this runtime starts, and the socket connects a moment
+    // later, so poll briefly instead of dropping it.
+    const flushPendingReply = async (attempt = 0): Promise<void> => {
         const pending = await sessionStateStore.readPendingReply();
-        if (!pending) return;
-        if (whatsappService.getStatus() !== 'connected') return;
+        const connected = whatsappService.getStatus() === 'connected';
+
+        if ((!pending || !connected) && attempt < 20) {
+            setTimeout(() => { void flushPendingReply(attempt + 1); }, 2000);
+            return;
+        }
+        if (!pending || !connected) return;
 
         try {
             const result = await whatsappService.sendMessage(pending.chatJid, pending.text);
@@ -267,7 +283,7 @@ export default function (pi: ExtensionAPI) {
             };
 
             await tryConnect();
-            await flushPendingReply();
+            void flushPendingReply();
         } else if (isWhatsappPiOn) {
             ctx.ui.notify('WhatsApp: Auto-connect requested, but no saved WhatsApp credentials were found. Use Connect WhatsApp once to scan the QR code.', 'warning');
         } else {

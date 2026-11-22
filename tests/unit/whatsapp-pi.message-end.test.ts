@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
     const createWhatsAppService = () => ({
         setVerboseMode: vi.fn(),
         setStatusCallback: vi.fn(),
+        setQRCodeCallback: vi.fn(),
         setIncomingMessageRecorder: vi.fn(),
         setMessageCallback: vi.fn(),
         setGroupBinding: vi.fn(),

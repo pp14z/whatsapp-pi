@@ -62,4 +62,14 @@ describe('SessionStateStore', () => {
         await writeFile(store.getPendingReplyPath(), JSON.stringify({ chatJid: 'x' }));
         expect(await store.readPendingReply()).toBeUndefined();
     });
+
+    it('honors WHATSAPP_PI_STATE_FILE as a dedicated resume pointer', () => {
+        process.env.WHATSAPP_PI_STATE_FILE = '/tmp/service-session.json';
+        try {
+            const dedicated = new SessionStateStore('/some/root');
+            expect(dedicated.getPointerPath()).toBe('/tmp/service-session.json');
+        } finally {
+            delete process.env.WHATSAPP_PI_STATE_FILE;
+        }
+    });
 });
